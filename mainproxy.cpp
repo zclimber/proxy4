@@ -63,10 +63,6 @@ std::pair<int, int> get_num(const string & buf, int offs) {
 	}
 }
 
-#include <fstream>
-
-std::fstream o("data.txt", std::ios_base::out);
-
 bool sync_load_chunked(string & buf, int sock) {
 	char t[4096];
 	int cpos = buf.find("\r\n\r\n") + 4;
