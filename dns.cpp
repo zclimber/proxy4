@@ -19,12 +19,12 @@ struct request {
 	int timeout;
 };
 
-int ids;
-std::list<request> reqs;
-std::vector<dns_response> ready;
-int event_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-std::mutex req_mutex, resp_mutex;
-std::condition_variable task_sleeper;
+static int ids;
+static std::list<request> reqs;
+static std::vector<dns_response> ready;
+static int event_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+static std::mutex req_mutex, resp_mutex;
+static std::condition_variable task_sleeper;
 
 using util::log;
 
@@ -66,7 +66,8 @@ void loop() {
 
 		int id = it->id;
 
-		int result = getaddrinfo(it->host.c_str(), it->port.c_str(), &hint, &addr);
+		int result = getaddrinfo(it->host.c_str(), it->port.c_str(), &hint,
+				&addr);
 		switch (result) {
 		case 0:
 			break;
@@ -93,20 +94,19 @@ void loop() {
 		it = reqs.erase(it);
 		read_lock.unlock();
 
-		for (addrinfo * cr = addr; result == 0 && cr != nullptr;
-				cr = cr->ai_next) {
-			sock = socket(cr->ai_family, cr->ai_socktype, cr->ai_protocol);
-			int conn_srv = connect(sock, cr->ai_addr, cr->ai_addrlen);
-			if (conn_srv == 0) {
-				break;
+		if (result == 0) {
+			for (addrinfo * cr = addr; cr != nullptr; cr = cr->ai_next) {
+				sock = socket(cr->ai_family, cr->ai_socktype, cr->ai_protocol);
+				int conn_srv = connect(sock, cr->ai_addr, cr->ai_addrlen);
+				if (conn_srv == 0) {
+					break;
+				}
+				close(sock);
+				sock = -1;
 			}
-			close(sock);
-			sock = -1;
+
+			freeaddrinfo(addr);
 		}
-
-		log << "Connected to " << it->host << " : " << sock << "\n";
-
-		freeaddrinfo(addr);
 		dns_response resp { id, sock };
 		write_lock.lock();
 		ready.push_back(resp);
@@ -115,4 +115,4 @@ void loop() {
 	}
 }
 
-std::thread dns_thread(loop);
+static std::thread dns_thread(loop);
