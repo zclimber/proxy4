@@ -8,6 +8,7 @@
 #ifndef DISPATCH_H_
 #define DISPATCH_H_
 
+#include <sys/epoll.h>
 #include <functional>
 
 namespace dispatch{
@@ -20,6 +21,7 @@ void unlink(int fd, int event_id);
 void unlink_current(int fd);
 
 void recycle_event(int event_id);
+void recycle_event_current();
 void recycle_fd(int fd);
 
 void arm_manual(int event_id);
