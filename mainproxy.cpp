@@ -12,7 +12,6 @@
 #include <sys/socket.h>
 #include <fcntl.h>
 
-#include "socket.h"
 #include "http.h"
 #include "util.h"
 
