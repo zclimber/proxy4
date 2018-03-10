@@ -42,14 +42,17 @@ static int current_action = 0;
 static std::mutex data_mutex;
 static std::recursive_mutex armed_mutex;
 
-int dispatch::add_event(std::function<void()> action) {
+int add_event(std::function<void()> action) {
 	std::lock_guard<std::mutex> lg(data_mutex);
 	int current_number = event_id_counter++;
 	events.insert( { current_number, event(action) });
 	return current_number;
 }
 
-bool dispatch::add_fd(int fd, int epoll_mode) {
+void add_fd(int fd, int epoll_mode) {
+	if (fd == -1) {
+		return;
+	}
 	std::lock_guard<std::mutex> lg(data_mutex);
 	auto it = fds.find(fd);
 	if (it != fds.end()) {
@@ -57,55 +60,72 @@ bool dispatch::add_fd(int fd, int epoll_mode) {
 			epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
 			fds.erase(it);
 		} else {
-			return false;
+			util::log
+					<< "Descriptor " + std::to_string(fd)
+							+ " already added to dispatch";
+			util::log
+					<< std::string("It can") + (it->second.recycle_marked ? "   " : "not")
+							+ "be recycled and has "
+							+ std::to_string(it->second.threads.size())
+							+ " triggers\n";
+			throw new std::logic_error(
+					"Descriptor " + std::to_string(fd)
+							+ " already added to dispatch");
 		}
 	}
 	fds.insert( { fd, fd_hold(fd) });
 	epoll_event ev { epoll_mode, { .fd = fd } }; // @suppress("Symbol is not resolved")
 	epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev);
-	return true;
+	return;
 }
 
-void dispatch::link(int fd, int epoll_target, int event_id) {
+void link(int fd, int epoll_target, int event_id) {
 	std::lock_guard<std::mutex> lg(data_mutex);
 	auto fdd = fds.find(fd);
 	auto evd = events.find(event_id);
 	link_holer l { event_id, epoll_target };
 	if (fdd == fds.end()) {
+		util::log << "Linking unregistered fd to event " << event_id << "\n";
 		throw new std::invalid_argument("Linking unregistered fd");
 	}
 	if (evd == events.end()) {
+		util::log << "Linking unregistered event to fd " << fd << "\n";
 		throw new std::invalid_argument("Linking unregistered event");
 	}
 	fdd->second.threads.push_back(l);
 	evd->second.trigger_count++;
 }
 
-void dispatch::unlink(int fd, int event_id) {
+void unlink(int fd, int event_id) {
 	std::lock_guard<std::mutex> lg(data_mutex);
 	auto fdd = fds.find(fd);
 	auto evd = events.find(event_id);
 	if (fdd == fds.end()) {
+		util::log << "Unlinking unregistered fd from event " << event_id
+				<< "\n";
 		throw new std::invalid_argument("Unlinking unregistered fd");
 	}
 	if (evd == events.end()) {
+		util::log << "Unlinking unregistered event from fd " << fd << "\n";
 		throw new std::invalid_argument("Unlinking unregistered event");
 	}
 	std::vector<link_holer> & vec = fdd->second.threads;
 	for (unsigned i = 0; i < vec.size(); i++) {
 		if (vec[i].event_id == event_id) {
 			vec.erase(vec.begin() + i);
+			evd->second.trigger_count--;
+			break;
 		}
 	}
 }
 
-void dispatch::unlink_current(int fd) {
+void unlink_current(int fd) {
 	if (current_action) {
 		unlink(fd, current_action);
 	}
 }
 
-void dispatch::recycle_event(int event_id) {
+void recycle_event(int event_id) {
 	std::lock_guard<std::mutex> lg(data_mutex);
 	auto evd = events.find(event_id);
 	if (evd != events.end()) {
@@ -113,21 +133,24 @@ void dispatch::recycle_event(int event_id) {
 	}
 }
 
-void dispatch::recycle_fd(int fd) {
+void recycle_fd(int fd) {
 	std::lock_guard<std::mutex> lg(data_mutex);
 	auto fdd = fds.find(fd);
 	if (fdd != fds.end()) {
 		fdd->second.recycle_marked = true;
+		for (auto x : fdd->second.threads) {
+			events.find(x.event_id)->second.trigger_count--;
+		}
 	}
 }
 
-void dispatch::recycle_event_current() {
+void recycle_event_current() {
 	if (current_action) {
 		recycle_event(current_action);
 	}
 }
 
-void dispatch::arm_manual(int event_id) {
+void arm_manual(int event_id) {
 	std::unique_lock<std::recursive_mutex> arm(armed_mutex);
 	if (events.count(event_id)) {
 		armed.insert(event_id);
@@ -167,12 +190,21 @@ void run_events() {
 
 void gc() {
 	std::lock_guard<std::mutex> lg(data_mutex);
-	for (auto it = events.begin(); it != events.end(); it++) {
+	int ev_start = events.size(), fd_start = fds.size();
+	int ev_hastriggers = 0, ev_notrecycled = 0;
+	for (auto it = events.begin(); it != events.end();) {
 		if (it->second.recycle_marked && it->second.trigger_count == 0) {
 			it = events.erase(it);
+		} else {
+			if (it->second.recycle_marked) {
+				ev_hastriggers++;
+			} else if (it->second.trigger_count == 0) {
+				ev_notrecycled++;
+			}
+			it++;
 		}
 	}
-	for (auto it = fds.begin(); it != fds.end(); ) {
+	for (auto it = fds.begin(); it != fds.end();) {
 		if (it->second.recycle_marked && it->second.threads.size() == 0) {
 			epoll_ctl(epoll_fd, EPOLL_CTL_DEL, it->first, nullptr);
 			it = fds.erase(it);
@@ -180,15 +212,20 @@ void gc() {
 			it++;
 		}
 	}
+	int ev_end = events.size(), fd_end = fds.size();
+	util::log << "GC Events: " << ev_start - ev_end << " deleted, " << ev_end
+			<< " left\n";
+	util::log << "GC Files : " << fd_start - fd_end << " deleted, " << fd_end
+			<< " left\n";
 }
 
 void dispatch_loop() {
-	dispatch::add_fd(manual_fd, EPOLLIN);
-	int read_manual = dispatch::add_event([] {
+	add_fd(manual_fd, EPOLLIN);
+	int read_manual = add_event([] {
 		unsigned long int l;
 		eventfd_read(manual_fd, &l);
 	});
-	dispatch::link(manual_fd, EPOLLIN, read_manual);
+	link(manual_fd, EPOLLIN, read_manual);
 	for (int cntr = 1;; cntr++) {
 		epoll_mark();
 		run_events();
@@ -198,12 +235,117 @@ void dispatch_loop() {
 	}
 }
 
-void dispatch::run_dispatcher_in_current_thread() {
+namespace dispatch {
+
+void run_dispatcher_in_current_thread() {
 	if (!dispatcher.joinable()) {
 		dispatch_loop();
 	}
 }
 
-void dispatch::create_dispatcher_thread() {
+void link(const fd_ref& fd, int epoll_target, const event_ref& ev) {
+	::link(fd.fd(), epoll_target, ev.id());
+}
+
+void unlink(const fd_ref&fd, const event_ref&ev) {
+	::unlink(fd.fd(), ev.id());
+}
+
+void unlink_current(const fd_ref& fd) {
+	::unlink_current(fd.fd());
+}
+
+void recycle_event(const event_ref& ev) {
+	::recycle_event(ev.id());
+}
+
+void recycle_event_current() {
+	::recycle_event_current();
+}
+
+void recycle_fd(const fd_ref& fd) {
+	::recycle_fd(fd.fd());
+}
+
+void arm_manual(const event_ref& ev) {
+	::arm_manual(ev.id());
+}
+
+void create_dispatcher_thread() {
 	dispatcher = std::thread(dispatch_loop);
+}
+
+}
+
+dispatch::event_ref::event_ref() :
+		event_id(-1) {
+}
+
+dispatch::event_ref::event_ref(const std::function<void()> & event) {
+	event_id = add_event(event);
+}
+
+int dispatch::event_ref::id() const {
+	return event_id;
+}
+
+void dispatch::event_ref::recycle() {
+	if (event_id != -1) {
+		::recycle_event(event_id);
+		event_id = -1;
+	}
+}
+
+dispatch::event_ref::event_ref(event_ref&& oth) {
+	event_id = oth.event_id;
+	oth.event_id = -1;
+}
+
+dispatch::event_ref& dispatch::event_ref::operator =(event_ref&& oth) {
+	if (this != &oth) {
+		event_id = oth.event_id;
+		oth.event_id = -1;
+	}
+	return *this;
+}
+
+dispatch::event_ref::~event_ref() {
+	recycle();
+}
+
+dispatch::fd_ref::fd_ref() :
+		fd_id(-1) {
+}
+
+dispatch::fd_ref::fd_ref(int id, int epoll_mode) :
+		fd_id(id) {
+	add_fd(id, epoll_mode);
+}
+
+int dispatch::fd_ref::fd() const {
+	return fd_id;
+}
+
+void dispatch::fd_ref::recycle() {
+	if (fd_id != -1) {
+		::recycle_fd(fd_id);
+		fd_id = -1;
+	}
+}
+
+dispatch::fd_ref::fd_ref(fd_ref&& oth) {
+	fd_id = oth.fd_id;
+	oth.fd_id = -1;
+}
+
+dispatch::fd_ref& dispatch::fd_ref::operator =(fd_ref&& oth) {
+	if (this != &oth) {
+		fd_id = oth.fd_id;
+		oth.fd_id = -1;
+	}
+	return *this;
+}
+
+dispatch::fd_ref::~fd_ref() {
+	recycle();
 }

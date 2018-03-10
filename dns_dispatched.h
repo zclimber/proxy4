@@ -6,7 +6,7 @@
 
 #include <future>
 
-std::future<int> connect_to_remote_server(const std::string & host,
-		const std::string & port, int next_event);
+std::future<int> connect_to_remote_server(const std::string& host,
+		const std::string& port, const dispatch::event_ref & event);
 
 #endif /* DNS_DISPATCHED_H_ */

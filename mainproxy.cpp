@@ -10,6 +10,7 @@
 #include <netdb.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <fcntl.h>
 
 #include "socket.h"
 #include "http.h"
@@ -19,181 +20,48 @@ using util::log;
 
 using std::string;
 
-bool sync_load_headers(std::string & buf, int sock) {
-	char t[4096];
-	while (true) {
-		int res = read(sock, t, sizeof(t));
-		if (res < 0) {
-			return false;
-		} else {
-			buf.append(t, t + res);
-			auto find = std::string(t, res).find("\r\n\r\n");
-			if (find != buf.npos) {
-				return true;
-			}
-		}
-	}
-}
+#include "dns_dispatched.h"
 
-bool sync_load_fixed(std::string & buf, int sock, int length) {
-	char t[4096];
-	while (length > 0) {
-		int res = read(sock, t, sizeof(t));
-		if (res <= 0) {
-			return false;
-		} else {
-			buf.append(t, t + res);
-			length -= res;
-		}
-	}
-	return true;
-}
+#include "loaders.h"
 
-std::pair<int, int> get_num(const string & buf, int offs) {
-	int rs = 0;
-	while(offs < (int)buf.length() && isxdigit(buf[offs])){
-		rs = rs * 16 + toupper(buf[offs]) - '0';
-		offs++;
-	}
-	size_t newt = buf.find("\r\n");
-	if(newt == buf.npos){
-		return {-1, -1};
-	} else {
-		return {rs, (int)newt};
-	}
-}
-
-bool sync_load_chunked(string & buf, int sock) {
-	char t[4096];
-	int cpos = buf.find("\r\n\r\n") + 4;
-	int chunkl = 0;
-	std::pair<int, int> gn = {0, 0};
-	while (true) {
-//		o << cpos << " " << chunkl << " " << gn.first << " " << gn.second << "\n";
-		if (cpos >= (int)buf.size()) {
-			int res = read(sock, t, sizeof(t));
-			if (res <= 0) {
-//				o << buf;
-//				o.flush();
-				log << "Error logged " << buf.size() << "\n";
-//				exit(0);
-				return false;
-			} else {
-				buf.append(t, t + res);
-			}
-		} else {
-			if (chunkl > 0) {
-				int mn = std::min(chunkl, (int) buf.length() - cpos);
-				cpos += mn;
-				chunkl -= mn;
-			} else if (chunkl == 0) {
-				if (gn.first != 0) {
-					cpos = gn.first;
-					gn.first = gn.second = 0;
-				}
-				gn = get_num(buf, cpos);
-				if (gn.first < 0) {
-					gn.first = cpos;
-					cpos = buf.length();
-					continue;
-				}
-				cpos = gn.second;
-				if (gn.first > 0) {
-					chunkl = gn.first + 2;
-				} else {
-					chunkl = -1;
-				}
-			} else {
-				if (buf.find("\r\n\r\n", cpos - 3)) {
-					return true;
-				} else {
-					cpos = buf.length();
-				}
-			}
-		}
-	}
-}
-
-int get_server_sock(const std::string & host, const std::string & port) {
-	constexpr addrinfo getaddrinfo_hint { 0, AF_INET, SOCK_STREAM, 0, 0, 0, 0,
-			nullptr };
-	addrinfo *cr;
-	int res = getaddrinfo(host.c_str(), port.c_str(), &getaddrinfo_hint, &cr);
-
-	switch(res){
-	case 0:
-		break;
-	case EAI_AGAIN:
-		log << "Temporarily unable to resolve " << host << ":" << port << "\n";
-		return -1;
-	case EAI_NONAME:
-		log << "Host " << host << ":" << port << " not found\n";
-		return -1;
-	case EAI_FAIL:
-		log << "Failed to resolve " << host << ":" << port << "\n";
-		return -1;
-	case EAI_SERVICE:
-		log << "Wrong service name in " << host << ":" << port << "\n";
-		return -1;
-	default:
-		log << "   DNS ERROR: " << gai_strerror(res) << " " << strerror(errno) << "\n";
-	}
-
-	if(res != 0){
-
-		log << " DNS ERROR " << gai_strerror(res) << "\n";
-		log << host << "\n" << port << "\n";
-	}
-
-	int srv_fd;
-
-	const addrinfo * result = cr;
-
-	for (; cr != nullptr; cr = cr->ai_next) {
-		srv_fd = socket(cr->ai_family, cr->ai_socktype, cr->ai_protocol);
-		int conn_srv = connect(srv_fd, cr->ai_addr, cr->ai_addrlen);
-		if (conn_srv == 0) {
-			break;
-		}
-		close(srv_fd);
-	}
-	freeaddrinfo(const_cast<addrinfo*>(result));
-	if (cr == nullptr) {
-		return -1;
-	} else {
-		return srv_fd;
-	}
-}
-
-bool sync_upload(const std::string & buf, int sock) {
-	size_t offs = 0;
-	while (offs < buf.size()) {
-		int res = write(sock, buf.c_str() + offs, buf.size() - offs);
-		if (res < 0) {
-			return false;
-		} else {
-			offs += res;
-		}
-	}
-	return true;
-}
-
-class proxy_connection {
-	int client_sock;
+class proxy_connection: public std::enable_shared_from_this<proxy_connection> {
+	dispatch::fd_ref client_sock, server_sock;
 	string buf;
+	std::vector<dispatch::event_ref> event_vec;
+	std::future<int> fut;
+	// 0 - fail_client
+	// 1 - fail_server
 public:
 	proxy_connection(int client_sock) :
-			client_sock(client_sock) {
+			client_sock(client_sock,
+			EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET) {
 	}
+	void start() {
+		load_request_headers();
+	}
+private:
 	void load_request_headers() {
-		log << "Start loading request headers on socket " << client_sock
+		event_vec.emplace_back( // @suppress("Ambiguous problem")
+				std::bind(&proxy_connection::fail_loading_client,
+						shared_from_this()));
+		event_vec.emplace_back( // @suppress("Ambiguous problem")
+				std::bind(&proxy_connection::fail_connecting_to_server,
+						shared_from_this()));
+		event_vec.emplace_back( // @suppress("Ambiguous problem")
+				std::bind(&proxy_connection::process_request_headers,
+						shared_from_this()));
+		log << "Start loading request headers on socket " << client_sock.fd()
 				<< "\n";
-		sync_load_headers(buf, client_sock);
-		process_request_headers();
+		auto xfut = async_load::headers(buf, client_sock, event_vec.back(),
+				event_vec[0]);
+//		auto t = xfut.wait_for(std::chrono::seconds(20));
+//		if (t == std::future_status::timeout || xfut.get() == -1) {
+//			return;
+//		}
+//		process_request_headers();
 	}
 	void process_request_headers() {
-		log << "Got headers on socket " << client_sock
-				<< "\n";
+//		log << "Got headers on socket " << client_sock << "\n";
 		header_parser hp;
 		hp.set_string(buf);
 		std::string host = hp.headers()["Host"];
@@ -203,121 +71,241 @@ public:
 			port = host.substr(colon + 1, host.length());
 			host = host.substr(0, colon);
 		}
-		log << "Connecting to server " << host << ":" << port
-				<< "\n";
-		int server_sock = get_server_sock(host, port);
-		if(server_sock == -1){
-			log << "Cannot connect to server " << host << ":" << port << "\n";
-			close(client_sock);
+//		log << "Connecting to server " << host << ":" << port << "\n";
+
+		event_vec.push_back(dispatch::event_ref());
+
+		event_vec.emplace_back( // @suppress("Ambiguous problem")
+				std::bind(&proxy_connection::process_request_headers_2,
+						shared_from_this(), hp));
+
+		fut = connect_to_remote_server(host, port, event_vec.back());
+
+//		process_request_headers_2(hp);
+	}
+	void process_request_headers_2(header_parser hp) {
+		int ssock = fut.get();
+		if (ssock == -1) {
+			log << "Cannot connect to server " << hp.headers()["Host"] << "\n";
+			cleanup();
+		}
+		server_sock = dispatch::fd_ref(ssock,
+		EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET);
+		log << hp.request() << " " << client_sock.fd() << " -> "
+				<< server_sock.fd() << "\n";
+		if (server_sock.fd() == -1) {
+			fail_connecting_to_server();
 			return;
 		}
-		log << "Connected to server " << host << ":" << port << " at socket " << server_sock
-				<< "\n";
+//		log << "Connected to server " << host << ":" << port << " at socket "
+//				<< server_sock << "\n";
 		if (hp.request().compare(0, 7, "CONNECT") == 0) {
-			start_connect_tunnel(server_sock);
+			start_connect_tunnel();
 		} else {
-			upload_request_to_server(server_sock);
+			upload_request_to_server();
 		}
 	}
-	void upload_request_to_server(int server_sock) {
+	void upload_request_to_server() {
 		header_parser hp;
 		hp.set_string(buf);
 		hp.headers()["Connection"] = "close";
 		buf = hp.assemble_head() + hp.excess();
+		std::future<int> xfut;
+
+		event_vec.emplace_back( // @suppress("Ambiguous problem")
+				std::bind(&proxy_connection::upload_request_to_server_2,
+						shared_from_this()));
+
 		if (hp.headers().count("Transfer-Encoding")
 				&& hp.headers()["Transfer-Encoding"].find("chunked")
 						!= std::string::npos) {
 			// chunked
-			sync_load_chunked(buf, client_sock);
+
+			xfut = async_load::chunked(buf, client_sock, event_vec.back(),
+					event_vec[0]);
 		} else if (hp.headers().count("Content-Length")) {
-			sync_load_fixed(buf, client_sock,
-					stol(hp.headers()["Content-Length"]) - hp.excess().length());
+			xfut = async_load::fixed(buf, client_sock,
+					stol(hp.headers()["Content-Length"]) - hp.excess().length(),
+					event_vec.back(), event_vec[1]);
 			// body
 		} else {
+			upload_request_to_server_2();
+			return;
+//			std::promise<int> pr;
+//			pr.set_value(0);
+//			xfut = pr.get_future();
 			// no body
 		}
 
+//		std::future_status t = xfut.wait_for(std::chrono::seconds(20));
+//		if (t == std::future_status::timeout || xfut.get() == -1) {
+//			return;
+//		}
+//
+////		log << "Downloaded client request from " << client_sock << " "
+////				<< buf.length() << " bytes\n";
+//
+//		upload_request_to_server_2();
+	}
+	void upload_request_to_server_2() {
 
-		log << "Downloaded client request from " << client_sock << " " << buf.length() << " bytes\n";
+//		event_vec.push_back(dispatch::event_ref());
 
-		sync_upload(buf, server_sock);
+		event_vec.emplace_back( // @suppress("Ambiguous problem")
+				std::bind(&proxy_connection::upload_request_to_server_3,
+						shared_from_this()));
+
+		std::future<int> xfut = async_load::upload(buf, server_sock,
+				event_vec.back(), event_vec[1]);
+//		auto tw = xfut.wait_for(std::chrono::seconds(20));
+//		if (tw == std::future_status::timeout || xfut.get() == -1) {
+//			return;
+//		}
+//
+//		upload_request_to_server_3();
+	}
+	void upload_request_to_server_3() {
+
+//		log << "Uploaded client request from " << client_sock << " to "
+//				<< server_sock << "\n";
 		buf.clear();
 
-		log << "Uploaded client request from " << client_sock << " to " << server_sock << "\n";
+//		event_vec.push_back(dispatch::event_ref());
 
-		sync_load_headers(buf, server_sock);
-		process_response_headers(server_sock);
+		event_vec.emplace_back( // @suppress("Ambiguous problem")
+				std::bind(&proxy_connection::process_response_headers,
+						shared_from_this()));
+		std::future<int> xfut = async_load::headers(buf, server_sock,
+				event_vec.back(), event_vec[0]);
+//		auto t = xfut.wait_for(std::chrono::seconds(20));
+//		if (t == std::future_status::timeout || xfut.get() == -1) {
+//			return;
+//		}
+
+//		process_response_headers();
 	}
 
-	void process_response_headers(int server_sock) {
-		log << "Got response from server at " << server_sock << "\n";
+	void process_response_headers() {
+		log << "Got response from server at " << server_sock.fd() << "\n";
 		header_parser hp;
 		hp.set_string(buf);
 		hp.headers()["Connection"] = "close";
 		buf = hp.assemble_head() + hp.excess();
+		std::future<int> xfut;
+		std::future_status t;
+		bool pass = false;
 
+//		event_vec.push_back(dispatch::event_ref());
+
+		event_vec.emplace_back( // @suppress("Ambiguous problem")
+				std::bind(&proxy_connection::process_response_headers_2,
+						shared_from_this()));
 		if (hp.headers().count("Transfer-Encoding")
 				&& hp.headers()["Transfer-Encoding"].find("chunked")
 						!= std::string::npos) {
 			// chunked
-			sync_load_chunked(buf, server_sock);
+
+			xfut = async_load::chunked(buf, server_sock, event_vec.back(),
+					event_vec[1]);
 		} else if (hp.headers().count("Content-Length")) {
 			// fixed length body
-			sync_load_fixed(buf, server_sock,
-					stol(hp.headers()["Content-Length"]));
+			xfut = async_load::fixed(buf, server_sock,
+					stol(hp.headers()["Content-Length"]) - hp.excess().length(),
+					event_vec.back(), event_vec[1]);
 		} else {
-			sync_load_fixed(buf, server_sock, INT_LEAST32_MAX);
+			pass = true;
+			xfut = async_load::fixed(buf, server_sock,
+			INT_LEAST32_MAX, event_vec.back(), event_vec.back());
 			// pump until ends
 		}
+//		t = xfut.wait_for(std::chrono::seconds(20));
+//		if (t == std::future_status::timeout || (!pass && xfut.get() == -1)) {
+//			return;
+//		}
+//
+//
+//		process_response_headers_2();
 
-		log << "Downloaded server response from " << server_sock << " " << buf.length() << " bytes\n";
+	}
+	void process_response_headers_2() {
+//		log << "Downloaded server response from " << server_sock.fd() << " "
+//				<< buf.length() << " bytes\n";
 
-		sync_upload(buf, client_sock);
-
-		log << "Uploaded server response from " << server_sock << " to " << client_sock << "\n";
-
-		close(server_sock);
-		close(client_sock);
+//		event_vec.push_back(dispatch::event_ref());
+		auto thisptr = shared_from_this();
+		event_vec.emplace_back( // @suppress("Ambiguous problem")
+				[this, thisptr] {
+					log << "Uploaded server response from " << server_sock.fd() << " to "
+					<< client_sock.fd() << "\n";
+					cleanup();
+				});
+		auto xfut = async_load::upload(buf, client_sock, event_vec.back(),
+				event_vec[1]);
+//		auto tw = xfut.wait_for(std::chrono::seconds(20));
+//		if (tw == std::future_status::timeout || xfut.get() == -1) {
+//			return;
+//		}
+//
+//		log << "Uploaded server response from " << server_sock.fd() << " to "
+//				<< client_sock.fd() << "\n";
+//		cleanup();
 	}
 
-	void start_connect_tunnel(int server_sock) {
-		close(server_sock);
-		close(client_sock);
+	void start_connect_tunnel() {
+		cleanup();
 		return;
-
 
 		header_parser hp;
 		hp.request() = "HTTP/1.1 200 Connection established";
 		hp.headers()["Proxy-agent"] = "mylittleproxy 0.1";
-		log << "Started http tunnel between " << client_sock << " and "
-				<< server_sock << "\n";
+		log << "Started http tunnel between " << client_sock.fd() << " and "
+				<< server_sock.fd() << "\n";
 	}
 
 	void fail_loading_client() {
 		// TODO
-		log << "failed loading client fd " << client_sock << "\n";
-		close(client_sock);
+		log << "Failed loading client fd " << client_sock.fd() << "\n";
+		cleanup();
 	}
-	void fail_connecting_to_server(int server_sock) {
+	void fail_connecting_to_server() {
 		// TODO
 		header_parser hp;
-		if (server_sock > 0) {
+		if (server_sock.fd() > 0) {
 			hp.request() = "HTTP/1.1 502 Bad Gateway";
 		} else {
 			hp.request() = "HTTP/1.1 504 Gateway Timeout";
-			close(server_sock);
 		}
-		log << "failed connection to server with client fd " << client_sock
-				<< "\n";
-		close(client_sock);
+		log << "failed connection to server " << server_sock.fd()
+				<< " with client fd " << client_sock.fd() << "\n";
+		cleanup();
 	}
+	void cleanup() {
+		if (client_sock.fd() != -1) {
+			int fd = client_sock.fd();
+			client_sock.recycle();
+			close(fd);
+		}
+		if (server_sock.fd() != -1) {
+			int fd = server_sock.fd();
+			server_sock.recycle();
+			close(fd);
+		}
+		buf = std::string();
+		event_vec.clear();
+	}
+public:
 	~proxy_connection() {
 	}
 };
 
-void connection_proc(int client_socket){
-	proxy_connection conn(client_socket);
-	conn.load_request_headers();
+std::mutex mtx;
+
+void connection_proc(int client_socket) {
+//	std::lock_guard<std::mutex> lg(mtx);
+	auto prox = std::make_shared<proxy_connection>(client_socket);
+	prox->start();
+//	lg.~lock_guard();
+	std::this_thread::sleep_for(std::chrono::seconds(10));
 }
 
 int main(int argc, char** argv) {
@@ -326,6 +314,7 @@ int main(int argc, char** argv) {
 		exit(0);
 	}
 	int port = atoi(argv[1]);
+	dispatch::create_dispatcher_thread();
 
 	int accept_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (accept_fd == -1) {
@@ -347,11 +336,21 @@ int main(int argc, char** argv) {
 	}
 	listen(accept_fd, 10);
 
-	for(;;){
+	dispatch::fd_ref acceptor(accept_fd, EPOLLIN);
+
+	dispatch::event_ref accept_ev([accept_fd] {
 		struct sockaddr_in cli_addr;
 		socklen_t cli_size = sizeof(cli_addr);
 		int new_client = accept(accept_fd, (sockaddr *) &cli_addr, &cli_size);
-		std::thread thr(connection_proc, new_client);
-		thr.detach();
-	}
+		log << "Accepted client " << new_client << "\n";
+		auto prox = std::make_shared<proxy_connection>(new_client);
+		prox->start();
+//			std::thread thr(connection_proc, new_client);
+//			thr.detach();
+//		log << "Finished client " << new_client << "\n";
+		});
+
+	dispatch::link(acceptor, EPOLLIN, accept_ev);
+
+	std::cin >> accept_fd;
 }

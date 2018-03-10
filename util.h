@@ -10,22 +10,44 @@
 
 #include <iostream>
 #include <type_traits>
+#include <chrono>
+#include <iomanip>
 
 namespace util {
 
 class logger {
-	std::ostream & os;
+	class pr_logger {
+		std::ostream & os;
+	public:
+		pr_logger() :
+				os(std::clog) {
+		}
+		pr_logger(std::ostream & os) :
+				os(os) {
+		}
+		template<class T>
+		const pr_logger & operator <<(T t) const {
+			os << t;
+			return *this;
+		}
+	};
+	pr_logger prl;
 public:
 	logger() :
-			os(std::clog) {
+			prl(std::clog) {
 	}
 	logger(std::ostream & os) :
-			os(os) {
+			prl(os) {
+	}
+	const pr_logger & cnt() const {
+		return prl;
 	}
 	template<class T>
-	const logger & operator <<(T t) const {
-		os << t;
-		return *this;
+	const pr_logger & operator <<(T t) const {
+		auto tm = std::chrono::system_clock::to_time_t(
+				std::chrono::system_clock::now());
+		prl << std::put_time(std::localtime(&tm), "%T") << " ";
+		return prl << t;
 	}
 };
 

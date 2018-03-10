@@ -11,20 +11,51 @@
 #include <sys/epoll.h>
 #include <functional>
 
-namespace dispatch{
+namespace dispatch {
 
-int add_event(std::function<void()> event);
-bool add_fd(int fd, int epoll_mode);
+class event_ref {
+	int event_id;
+public:
+	event_ref();
+	event_ref(const std::function<void()> & event);
 
-void link(int fd, int epoll_target, int event_id);
-void unlink(int fd, int event_id);
-void unlink_current(int fd);
+	event_ref(const event_ref &) = delete;
+	event_ref(event_ref &&);
+	event_ref & operator =(event_ref &&);
 
-void recycle_event(int event_id);
+	int id() const;
+
+	void recycle();
+
+	~event_ref();
+};
+
+class fd_ref {
+	int fd_id;
+public:
+	fd_ref();
+	fd_ref(int id, int epoll_mode);
+
+	fd_ref(const fd_ref &) = delete;
+	fd_ref(fd_ref &&);
+	fd_ref & operator =(fd_ref &&);
+
+	int fd() const;
+
+	void recycle();
+
+	~fd_ref();
+};
+
+void link(const fd_ref &, int epoll_target, const event_ref &);
+void unlink(const fd_ref &, const event_ref &);
+void unlink_current(const fd_ref &);
+
+void recycle_event(const event_ref &);
 void recycle_event_current();
-void recycle_fd(int fd);
+void recycle_fd(const fd_ref &);
 
-void arm_manual(int event_id);
+void arm_manual(const event_ref &);
 
 void run_dispatcher_in_current_thread();
 void create_dispatcher_thread();
