@@ -20,6 +20,7 @@
 
 #include "dispatch.h"
 #include "http.h"
+#include "relay.h"
 #include "util.h"
 
 using util::log;
@@ -35,6 +36,7 @@ class proxy_connection: public std::enable_shared_from_this<proxy_connection> {
 	string buf;
 	std::vector<dispatch::event_ref> event_vec;
 	std::future<int> fut;
+	int relaycount = 0;
 	// 0 - fail_client
 	// 1 - fail_server
 public:
@@ -198,8 +200,6 @@ private:
 		hp.headers()["Connection"] = "close";
 		buf = hp.assemble_head() + hp.excess();
 		std::future<int> xfut;
-		std::future_status t;
-		bool pass = false;
 
 //		event_vec.push_back(dispatch::event_ref());
 
@@ -219,7 +219,6 @@ private:
 					stol(hp.headers()["Content-Length"]) - hp.excess().length(),
 					event_vec.back(), event_vec[1]);
 		} else {
-			pass = true;
 			xfut = async_load::fixed(buf, server_sock,
 			INT_LEAST32_MAX, event_vec.back(), event_vec.back());
 			// pump until ends
@@ -258,12 +257,21 @@ private:
 	}
 
 	void start_connect_tunnel() {
-		cleanup();
-		return;
-
 		header_parser hp;
 		hp.request() = "HTTP/1.1 200 Connection established";
 		hp.headers()["Proxy-agent"] = "mylittleproxy 0.1";
+		std::string newbuf = buf;
+		auto thisptr = shared_from_this();
+		auto fin = [thisptr]() -> void {
+			thisptr->relaycount--;
+			if(thisptr->relaycount == 0) {
+				thisptr->cleanup();
+			}
+		};
+		relaycount = 2;
+		std::string empty;
+		make_relay(client_sock, server_sock, empty, fin);
+		make_relay(server_sock, client_sock, newbuf, fin);
 		log << "Started http tunnel between " << client_sock.fd() << " and "
 				<< server_sock.fd() << "\n";
 	}
