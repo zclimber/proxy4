@@ -1,10 +1,10 @@
 #ifndef LOADERS_H_
 #define LOADERS_H_
 
-#include <string>
-#include "dispatch.h"
-
 #include <future>
+#include <string>
+
+#include "dispatch.h"
 
 namespace async_load {
 

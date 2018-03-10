@@ -8,8 +8,8 @@
 #ifndef HTTP_H_
 #define HTTP_H_
 
-#include <unordered_map>
 #include <string>
+#include <unordered_map>
 
 class header_parser {
 	std::string request_str, excess_str;

@@ -7,16 +7,10 @@
 
 #include "http.h"
 
-#include "util.h"
-
+#include <stddef.h>
+#include <cctype>
 #include <sstream>
-
-#include <stdint.h>
-#include <signal.h>
-#include <fcntl.h>
-#include <unistd.h>
-
-using namespace util;
+#include <utility>
 
 bool header_parser::set_string(const std::string& s) {
 	std::istringstream ss;

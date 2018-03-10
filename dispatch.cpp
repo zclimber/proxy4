@@ -1,12 +1,18 @@
 #include "dispatch.h"
-#include "util.h"
 
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
-
-#include <thread>
-#include <unordered_set>
+#include <iterator>
 #include <mutex>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include "util.h"
 
 struct event {
 	std::function<void()> action;

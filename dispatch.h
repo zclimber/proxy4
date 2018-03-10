@@ -8,8 +8,9 @@
 #ifndef DISPATCH_H_
 #define DISPATCH_H_
 
-#include <sys/epoll.h>
 #include <functional>
+
+#include <sys/epoll.h>
 
 namespace dispatch {
 

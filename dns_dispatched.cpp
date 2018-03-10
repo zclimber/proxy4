@@ -1,7 +1,11 @@
 #include "dns_dispatched.h"
 
-#include <type_traits>
+#include <sys/epoll.h>
 #include <unistd.h>
+#include <unordered_map>
+#include <utility>
+
+#include "dns.h"
 
 struct task {
 	std::promise<int> promise;

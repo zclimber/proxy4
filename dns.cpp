@@ -1,16 +1,19 @@
 #include "dns.h"
-#include "util.h"
 
-#include <sys/eventfd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <netdb.h>
+#include <sys/eventfd.h>
+#include <sys/socket.h>
 #include <unistd.h>
-
-#include <list>
+#include <algorithm>
+#include <cerrno>
 #include <condition_variable>
-#include <thread>
+#include <cstdlib>
 #include <cstring>
+#include <list>
+#include <mutex>
+#include <thread>
+
+#include "util.h"
 
 struct request {
 	std::string host;
