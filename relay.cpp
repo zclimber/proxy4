@@ -37,15 +37,15 @@ void relay::loop_once() {
 			errno = 0;
 
 
-			log << "Relay " << in_fd.fd() << " -> " << out_fd.fd() << " in "
-					<< clr << " out " << clw << " bufs " << buf.size();
+			log << "Relay " << in_fd << " -> " << out_fd << " in "
+					<< clr << " out " << clw << " bufs " << buf.size() << util::newl;
 
 			if (clw < 0) {
 				st = FINISHED;
-				log << "Relay " << in_fd.fd() << " -> " << out_fd.fd()
+				log << "Relay " << in_fd << " -> " << out_fd
 						<< " done";
 			} else if (clr == 0 || (clr == -1 && clr_errno != EAGAIN)) {
-				log << "Relay " << in_fd.fd() << " -> " << out_fd.fd()
+				log << "Relay " << in_fd << " -> " << out_fd
 						<< " read all";
 				st = WRITE_REST;
 			} else if (clr_errno == EAGAIN
@@ -62,7 +62,7 @@ void relay::loop_once() {
 			}
 
 			if (buf.empty() || (clw_errno == -1 && clw_errno != EAGAIN)) {
-				log << "Relay " << in_fd.fd() << " -> " << out_fd.fd()
+				log << "Relay " << in_fd << " -> " << out_fd
 						<< " done";
 				st = FINISHED;
 			} else if (clw_errno == EAGAIN) {

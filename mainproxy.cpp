@@ -57,7 +57,7 @@ private:
 				std::bind(&proxy_connection::process_request_headers,
 						shared_from_this()));
 		util::log() << "Start loading request headers on socket "
-				<< client_sock.fd();
+				<< client_sock;
 		auto xfut = async_load::headers(buf, client_sock, event_vec.back(),
 				event_vec[0]);
 //		auto t = xfut.wait_for(std::chrono::seconds(20));
@@ -97,8 +97,8 @@ private:
 		}
 		server_sock = dispatch::fd_ref(ssock,
 		EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET);
-		util::log() << hp.request() << " " << client_sock.fd() << " -> "
-				<< server_sock.fd();
+		util::log() << hp.request() << " " << client_sock << " -> "
+				<< server_sock;
 		if (server_sock.fd() == -1) {
 			fail_connecting_to_server();
 			return;
@@ -192,7 +192,7 @@ private:
 	}
 
 	void process_response_headers() {
-		util::log() << "Got response from server at " << server_sock.fd();
+		util::log() << "Got response from server at " << server_sock;
 		header_parser hp;
 		hp.set_string(buf);
 		hp.headers()["Connection"] = "close";
@@ -238,8 +238,8 @@ private:
 		auto thisptr = shared_from_this();
 		event_vec.emplace_back( // @suppress("Ambiguous problem")
 				[this, thisptr] {
-					util::log() << "Uploaded server response from " << server_sock.fd() << " to "
-					<< client_sock.fd();
+					util::log() << "Uploaded server response from " << server_sock << " to "
+					<< client_sock;
 					cleanup();
 				});
 		auto xfut = async_load::upload(buf, client_sock, event_vec.back(),
@@ -270,13 +270,13 @@ private:
 		std::string empty;
 		make_relay(client_sock, server_sock, empty, fin);
 		make_relay(server_sock, client_sock, newbuf, fin);
-		util::log() << "Started http tunnel between " << client_sock.fd()
-				<< " and " << server_sock.fd();
+		util::log() << "Started http tunnel between " << client_sock << " and "
+				<< server_sock.fd();
 	}
 
 	void fail_loading_client() {
 		// TODO
-		util::log() << "Failed loading client fd " << client_sock.fd();
+		util::log() << "Failed loading client fd " << client_sock;
 		cleanup();
 	}
 	void fail_connecting_to_server() {
@@ -287,8 +287,8 @@ private:
 		} else {
 			hp.request() = "HTTP/1.1 504 Gateway Timeout";
 		}
-		util::log() << "failed connection to server " << server_sock.fd()
-				<< " with client fd " << client_sock.fd();
+		util::log() << "failed connection to server " << server_sock
+				<< " with client fd " << client_sock;
 		cleanup();
 	}
 	void cleanup() {
@@ -326,7 +326,7 @@ int main(int argc, char** argv) {
 		exit(0);
 	}
 	int port = atoi(argv[1]);
-	if(port < 1 || port > UINT16_MAX){
+	if (port < 1 || port > UINT16_MAX) {
 		printf("Invalid port number %s", argv[1]);
 		exit(0);
 	}

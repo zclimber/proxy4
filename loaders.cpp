@@ -23,7 +23,7 @@ void finish(dispatch::fd_ref & sock, const dispatch::event_ref & next_action,
 	dispatch::unlink_current(sock);
 	dispatch::recycle_event_current();
 	dispatch::arm_manual(next_action);
-	log << " (ending " << sock.fd() << ") ";
+	log << " (ending " << sock << ") ";
 }
 
 void async_load_generic(std::string& buf, dispatch::fd_ref & sock,
@@ -34,7 +34,7 @@ void async_load_generic(std::string& buf, dispatch::fd_ref & sock,
 
 	auto log = util::log();
 
-	log << "Generic s" << sock.fd() << " : ";
+	log << "Generic s" << sock << " : ";
 	char t[READ_BUFFER_SIZE];
 	if (positive_check(buf, 0, log)) {
 		finish(sock, next_action, log);
@@ -131,7 +131,7 @@ void chunked_check(dispatch::fd_ref & sock,
 		std::shared_ptr<intprom> prom) {
 	char t[4096];
 	auto log = util::log();
-	log << "Chunked s" << sock.fd() << " : ";
+	log << "Chunked s" << sock << " : ";
 	while (true) {
 		if ((cpos >= (int) buf.size()) | length_pending) {
 			int res = recv(sock.fd(), t, sizeof(t), MSG_DONTWAIT);
@@ -208,10 +208,10 @@ std::future<int> async_load::upload(std::string& buf, dispatch::fd_ref& sock,
 		const dispatch::event_ref& fail_action) {
 	auto prom = std::make_shared<std::promise<int>>();
 	size_t offs = 0;
-	auto log = util::log();
 	dispatch::event_ref upl(
 			[&, prom, offs]() mutable {
-				log << "Upload s" << sock.fd() << " : ";
+				auto log = util::log();
+				log << "Upload s" << sock << " : ";
 				while(offs < buf.size()) {
 					int rs = send(sock.fd(), buf.c_str() + offs, buf.size() - offs, MSG_DONTWAIT | MSG_NOSIGNAL);
 					log << rs << " ";
