@@ -29,8 +29,7 @@ void finish(dispatch::fd_ref & sock, const dispatch::event_ref & next_action,
 void async_load_generic(std::string& buf, dispatch::fd_ref & sock,
 		const dispatch::event_ref & next_action,
 		const dispatch::event_ref & fail_action,
-		std::function<bool(const std::string &, int, util::logger &)> && positive_check,
-		std::shared_ptr<intprom> prom) {
+		std::function<bool(const std::string &, int, util::logger &)> && positive_check) {
 
 	auto log = util::log();
 
@@ -38,7 +37,6 @@ void async_load_generic(std::string& buf, dispatch::fd_ref & sock,
 	char t[READ_BUFFER_SIZE];
 	if (positive_check(buf, 0, log)) {
 		finish(sock, next_action, log);
-		prom->set_value(0);
 		log << "WIN inst";
 		return;
 	}
@@ -50,13 +48,11 @@ void async_load_generic(std::string& buf, dispatch::fd_ref & sock,
 			if (res == 0) {
 				log << "EOF";
 				finish(sock, fail_action, log);
-				prom->set_value(-1);
 			} else if (res == -1 && errno == EAGAIN) {
 				log << "WAIT";
 			} else {
 				log << "FAIL";
 				finish(sock, fail_action, log);
-				prom->set_value(-1);
 			}
 			errno = 0;
 			return;
@@ -64,7 +60,6 @@ void async_load_generic(std::string& buf, dispatch::fd_ref & sock,
 			buf.append(t, t + res);
 			if (positive_check(buf, res, log)) {
 				finish(sock, next_action, log);
-				prom->set_value(0);
 				log << "WIN";
 				return;
 			}
@@ -72,10 +67,9 @@ void async_load_generic(std::string& buf, dispatch::fd_ref & sock,
 	}
 }
 
-std::future<int> async_load::headers(std::string& buf, dispatch::fd_ref & sock,
+void async_load::headers(std::string& buf, dispatch::fd_ref & sock,
 		const dispatch::event_ref & next_action,
 		const dispatch::event_ref & fail_action) {
-	auto prom = std::make_shared<intprom>();
 	auto internal =
 			[] (const std::string & buf, int last_size, util::logger & log) -> bool {
 				auto find = buf.find("\r\n\r\n",
@@ -84,33 +78,30 @@ std::future<int> async_load::headers(std::string& buf, dispatch::fd_ref & sock,
 				return find != buf.npos;
 			};
 	dispatch::event_ref d(
-			[&buf, &sock, &next_action, &fail_action, prom, internal]() {
-				async_load_generic(buf, sock, next_action, fail_action, internal, prom);
+			[&buf, &sock, &next_action, &fail_action, internal]() {
+				async_load_generic(buf, sock, next_action, fail_action, internal);
 			});
 
 	dispatch::link(sock, EPOLLIN | EPOLLRDHUP | EPOLLHUP, d);
 	dispatch::arm_manual(d);
 	util::log() << "Headers " << d.id();
-	return prom->get_future();
 }
 
-std::future<int> async_load::fixed(std::string& buf, dispatch::fd_ref & sock,
+void async_load::fixed(std::string& buf, dispatch::fd_ref & sock,
 		int length, const dispatch::event_ref & next_action,
 		const dispatch::event_ref & fail_action) {
-	auto prom = std::make_shared<intprom>();
 	dispatch::event_ref d(
-			[&buf, &sock, &next_action, &fail_action, prom, length]() mutable {
+			[&buf, &sock, &next_action, &fail_action, length]() mutable {
 				int & xlen = length;
 				async_load_generic(buf, sock, next_action, fail_action,
 						[&xlen] (const std::string &, int last_size, util::logger & log) {
 							xlen -= last_size;
 							log << "l " << xlen << " ";
 							return xlen <= 0;
-						}, prom);
+						});
 			});
 	dispatch::link(sock, EPOLLIN | EPOLLRDHUP | EPOLLHUP, d);
 	dispatch::arm_manual(d);
-	return prom->get_future();
 }
 
 std::pair<int, int> get_new_chunk_size(std::string_view sw) {
@@ -127,8 +118,7 @@ std::pair<int, int> get_new_chunk_size(std::string_view sw) {
 void chunked_check(dispatch::fd_ref & sock,
 		const dispatch::event_ref & next_action,
 		const dispatch::event_ref & fail_action, int & cpos, int & chunkl,
-		bool & length_pending, std::string & buf,
-		std::shared_ptr<intprom> prom) {
+		bool & length_pending, std::string & buf) {
 	char t[4096];
 	auto log = util::log();
 	log << "Chunked " << sock << " : ";
@@ -148,7 +138,6 @@ void chunked_check(dispatch::fd_ref & sock,
 				} else {
 					log << "FAIL";
 					finish(sock, fail_action, log);
-					prom->set_value(-1);
 				}
 				errno = 0;
 				return;
@@ -175,7 +164,6 @@ void chunked_check(dispatch::fd_ref & sock,
 			} else {
 				if (buf.find("\r\n\r\n", cpos - 3) != buf.npos) {
 					finish(sock, next_action, log);
-					prom->set_value(0);
 					log << "WIN";
 					return;
 				} else {
@@ -187,29 +175,26 @@ void chunked_check(dispatch::fd_ref & sock,
 
 }
 
-std::future<int> async_load::chunked(std::string& buf, dispatch::fd_ref & sock,
+void async_load::chunked(std::string& buf, dispatch::fd_ref & sock,
 		const dispatch::event_ref & next_action,
 		const dispatch::event_ref & fail_action) {
-	auto prom = std::make_shared<intprom>();
 	int cpos = buf.find("\r\n\r\n") + 4;
 	int chunkl = 0;
 	bool length_pending = false;
 	dispatch::event_ref d(
 			[ =, &buf, &sock, &next_action, &fail_action]() mutable {
-				chunked_check(sock, next_action, fail_action, cpos, chunkl, length_pending, buf, prom);
+				chunked_check(sock, next_action, fail_action, cpos, chunkl, length_pending, buf);
 			});
 	dispatch::link(sock, EPOLLIN | EPOLLRDHUP | EPOLLHUP, d);
 	dispatch::arm_manual(d);
-	return prom->get_future();
 }
 
-std::future<int> async_load::upload(std::string& buf, dispatch::fd_ref& sock,
+void async_load::upload(std::string& buf, dispatch::fd_ref& sock,
 		const dispatch::event_ref& next_action,
 		const dispatch::event_ref& fail_action) {
-	auto prom = std::make_shared<std::promise<int>>();
 	size_t offs = 0;
 	dispatch::event_ref upl(
-			[&, prom, offs]() mutable {
+			[&, offs]() mutable {
 				auto log = util::log();
 				log << "Upload " << sock << " : ";
 				while(offs < buf.size()) {
@@ -223,14 +208,12 @@ std::future<int> async_load::upload(std::string& buf, dispatch::fd_ref& sock,
 					} else {
 						log << "FAIL";
 						finish(sock, fail_action, log);
-						prom->set_value(-1);
 						return;
 					}
 				}
 				if(offs == buf.size()) {
 					finish(sock, next_action, log);
 					log << "WIN";
-					prom->set_value(0);
 					offs += 100;
 				} else {
 					log << "SECONDCALL";
@@ -238,5 +221,4 @@ std::future<int> async_load::upload(std::string& buf, dispatch::fd_ref& sock,
 			});
 	dispatch::link(sock, EPOLLOUT | EPOLLRDHUP | EPOLLHUP, upl);
 	dispatch::arm_manual(upl);
-	return prom->get_future();
 }

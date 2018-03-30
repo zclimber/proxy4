@@ -10,16 +10,16 @@ namespace async_load {
 
 // all of these assume sock is added to dispatch
 
-std::future<int> headers(std::string& buf, dispatch::fd_ref & sock,
+void headers(std::string& buf, dispatch::fd_ref & sock,
 		const dispatch::event_ref & next_action,
 		const dispatch::event_ref & fail_action);
-std::future<int> fixed(std::string& buf, dispatch::fd_ref & sock, int length,
+void fixed(std::string& buf, dispatch::fd_ref & sock, int length,
 		const dispatch::event_ref & next_action,
 		const dispatch::event_ref & fail_action);
-std::future<int> chunked(std::string& buf, dispatch::fd_ref & sock,
+void chunked(std::string& buf, dispatch::fd_ref & sock,
 		const dispatch::event_ref & next_action,
 		const dispatch::event_ref & fail_action);
-std::future<int> upload(std::string& buf, dispatch::fd_ref & sock,
+void upload(std::string& buf, dispatch::fd_ref & sock,
 		const dispatch::event_ref & next_action,
 		const dispatch::event_ref & fail_action);
 

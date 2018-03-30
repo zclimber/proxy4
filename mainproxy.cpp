@@ -59,7 +59,7 @@ private:
 		util::name_fd(client_sock.fd(), string("client") + std::to_string(client_sock.fd()));
 		util::log() << "Start loading request headers on socket "
 				<< client_sock;
-		auto xfut = async_load::headers(buf, client_sock, event_vec.back(),
+		async_load::headers(buf, client_sock, event_vec.back(),
 				event_vec[0]);
 //		auto t = xfut.wait_for(std::chrono::seconds(20));
 //		if (t == std::future_status::timeout || xfut.get() == -1) {
@@ -129,10 +129,10 @@ private:
 						!= std::string::npos) {
 			// chunked
 
-			xfut = async_load::chunked(buf, client_sock, event_vec.back(),
+			async_load::chunked(buf, client_sock, event_vec.back(),
 					event_vec[0]);
 		} else if (hp.headers().count("Content-Length")) {
-			xfut = async_load::fixed(buf, client_sock,
+			async_load::fixed(buf, client_sock,
 					stol(hp.headers()["Content-Length"]) - hp.excess().length(),
 					event_vec.back(), event_vec[1]);
 			// body
@@ -163,7 +163,7 @@ private:
 				std::bind(&proxy_connection::upload_request_to_server_3,
 						shared_from_this()));
 
-		std::future<int> xfut = async_load::upload(buf, server_sock,
+		async_load::upload(buf, server_sock,
 				event_vec.back(), event_vec[1]);
 //		auto tw = xfut.wait_for(std::chrono::seconds(20));
 //		if (tw == std::future_status::timeout || xfut.get() == -1) {
@@ -183,7 +183,7 @@ private:
 		event_vec.emplace_back( // @suppress("Ambiguous problem")
 				std::bind(&proxy_connection::process_response_headers,
 						shared_from_this()));
-		std::future<int> xfut = async_load::headers(buf, server_sock,
+		async_load::headers(buf, server_sock,
 				event_vec.back(), event_vec[0]);
 //		auto t = xfut.wait_for(std::chrono::seconds(20));
 //		if (t == std::future_status::timeout || xfut.get() == -1) {
@@ -199,7 +199,6 @@ private:
 		hp.set_string(buf);
 		hp.headers()["Connection"] = "close";
 		buf = hp.assemble_head() + hp.excess();
-		std::future<int> xfut;
 
 //		event_vec.push_back(dispatch::event_ref());
 
@@ -211,15 +210,15 @@ private:
 						!= std::string::npos) {
 			// chunked
 
-			xfut = async_load::chunked(buf, server_sock, event_vec.back(),
+			async_load::chunked(buf, server_sock, event_vec.back(),
 					event_vec[1]);
 		} else if (hp.headers().count("Content-Length")) {
 			// fixed length body
-			xfut = async_load::fixed(buf, server_sock,
+			async_load::fixed(buf, server_sock,
 					stol(hp.headers()["Content-Length"]) - hp.excess().length(),
 					event_vec.back(), event_vec[1]);
 		} else {
-			xfut = async_load::fixed(buf, server_sock,
+			async_load::fixed(buf, server_sock,
 			INT_LEAST32_MAX, event_vec.back(), event_vec.back());
 			// pump until ends
 		}
@@ -244,7 +243,7 @@ private:
 					<< client_sock;
 					cleanup();
 				});
-		auto xfut = async_load::upload(buf, client_sock, event_vec.back(),
+		async_load::upload(buf, client_sock, event_vec.back(),
 				event_vec[1]);
 //		auto tw = xfut.wait_for(std::chrono::seconds(20));
 //		if (tw == std::future_status::timeout || xfut.get() == -1) {
