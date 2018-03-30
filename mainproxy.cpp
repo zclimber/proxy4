@@ -56,6 +56,7 @@ private:
 		event_vec.emplace_back( // @suppress("Ambiguous problem")
 				std::bind(&proxy_connection::process_request_headers,
 						shared_from_this()));
+		util::name_fd(client_sock.fd(), string("client") + std::to_string(client_sock.fd()));
 		util::log() << "Start loading request headers on socket "
 				<< client_sock;
 		auto xfut = async_load::headers(buf, client_sock, event_vec.back(),
@@ -103,6 +104,7 @@ private:
 			fail_connecting_to_server();
 			return;
 		}
+		util::name_fd(server_sock.fd(), hp.headers()["Host"]);
 //		log << "Connected to server " << host << ":" << port << " at socket "
 //				<< server_sock << "\n";
 		if (hp.request().compare(0, 7, "CONNECT") == 0) {
