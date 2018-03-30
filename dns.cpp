@@ -29,8 +29,6 @@ static int event_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
 static std::mutex req_mutex, resp_mutex;
 static std::condition_variable task_sleeper;
 
-using util::log;
-
 int enqueue_request(const std::string& host, const std::string& port,
 		int timeout) {
 	request new_req { host, port, ids++, timeout };
@@ -79,17 +77,16 @@ void loop() {
 		case EAI_NONAME:
 		case EAI_FAIL:
 		case EAI_SERVICE:
-			log << "Unable to resolve " << it->host << ":" << it->port << " . "
-					<< gai_strerror(result) << "\n";
+			util::log() << "Unable to resolve " << it->host << ":" << it->port
+					<< " . " << gai_strerror(result);
 			break;
 		default:
-			log << "Unknown DNS error : " << gai_strerror(result) << " "
-					<< strerror(errno) << " on " << it->host << ":" << it->port
-					<< "\n";
+			util::log() << "Unknown DNS error : " << gai_strerror(result) << " "
+					<< strerror(errno) << " on " << it->host << ":" << it->port;
 			exit(0);
 		}
 
-		log << "Resolved domain " << it->host << "\n";
+		util::log() << "Resolved domain " << it->host;
 
 		int sock = -1;
 

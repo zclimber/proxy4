@@ -23,8 +23,6 @@
 #include "relay.h"
 #include "util.h"
 
-using util::log;
-
 using std::string;
 
 #include "dns_dispatched.h"
@@ -58,8 +56,8 @@ private:
 		event_vec.emplace_back( // @suppress("Ambiguous problem")
 				std::bind(&proxy_connection::process_request_headers,
 						shared_from_this()));
-		log << "Start loading request headers on socket " << client_sock.fd()
-				<< "\n";
+		util::log() << "Start loading request headers on socket "
+				<< client_sock.fd();
 		auto xfut = async_load::headers(buf, client_sock, event_vec.back(),
 				event_vec[0]);
 //		auto t = xfut.wait_for(std::chrono::seconds(20));
@@ -94,13 +92,13 @@ private:
 	void process_request_headers_2(header_parser hp) {
 		int ssock = fut.get();
 		if (ssock == -1) {
-			log << "Cannot connect to server " << hp.headers()["Host"] << "\n";
+			util::log() << "Cannot connect to server " << hp.headers()["Host"];
 			cleanup();
 		}
 		server_sock = dispatch::fd_ref(ssock,
 		EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET);
-		log << hp.request() << " " << client_sock.fd() << " -> "
-				<< server_sock.fd() << "\n";
+		util::log() << hp.request() << " " << client_sock.fd() << " -> "
+				<< server_sock.fd();
 		if (server_sock.fd() == -1) {
 			fail_connecting_to_server();
 			return;
@@ -194,7 +192,7 @@ private:
 	}
 
 	void process_response_headers() {
-		log << "Got response from server at " << server_sock.fd() << "\n";
+		util::log() << "Got response from server at " << server_sock.fd();
 		header_parser hp;
 		hp.set_string(buf);
 		hp.headers()["Connection"] = "close";
@@ -240,8 +238,8 @@ private:
 		auto thisptr = shared_from_this();
 		event_vec.emplace_back( // @suppress("Ambiguous problem")
 				[this, thisptr] {
-					log << "Uploaded server response from " << server_sock.fd() << " to "
-					<< client_sock.fd() << "\n";
+					util::log() << "Uploaded server response from " << server_sock.fd() << " to "
+					<< client_sock.fd();
 					cleanup();
 				});
 		auto xfut = async_load::upload(buf, client_sock, event_vec.back(),
@@ -272,13 +270,13 @@ private:
 		std::string empty;
 		make_relay(client_sock, server_sock, empty, fin);
 		make_relay(server_sock, client_sock, newbuf, fin);
-		log << "Started http tunnel between " << client_sock.fd() << " and "
-				<< server_sock.fd() << "\n";
+		util::log() << "Started http tunnel between " << client_sock.fd()
+				<< " and " << server_sock.fd();
 	}
 
 	void fail_loading_client() {
 		// TODO
-		log << "Failed loading client fd " << client_sock.fd() << "\n";
+		util::log() << "Failed loading client fd " << client_sock.fd();
 		cleanup();
 	}
 	void fail_connecting_to_server() {
@@ -289,8 +287,8 @@ private:
 		} else {
 			hp.request() = "HTTP/1.1 504 Gateway Timeout";
 		}
-		log << "failed connection to server " << server_sock.fd()
-				<< " with client fd " << client_sock.fd() << "\n";
+		util::log() << "failed connection to server " << server_sock.fd()
+				<< " with client fd " << client_sock.fd();
 		cleanup();
 	}
 	void cleanup() {
@@ -356,7 +354,7 @@ int main(int argc, char** argv) {
 		struct sockaddr_in cli_addr;
 		socklen_t cli_size = sizeof(cli_addr);
 		int new_client = accept(accept_fd, (sockaddr *) &cli_addr, &cli_size);
-		log << "Accepted client " << new_client << "\n";
+		util::log() << "Accepted client " << new_client;
 		auto prox = std::make_shared<proxy_connection>(new_client);
 		prox->start();
 //			std::thread thr(connection_proc, new_client);

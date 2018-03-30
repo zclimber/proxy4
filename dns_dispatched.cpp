@@ -40,7 +40,7 @@ int init_dispatched_dns() {
 				for(auto x : new_ids) {
 					auto it = tasks.find(x.identifier);
 					if(it == tasks.end()) {
-						util::log << "DNS error : request " << x.identifier << " doesn't exist but resolved\n";
+						util::log() << "DNS error : request " << x.identifier << " doesn't exist but resolved";
 					} else {
 						task & current = it->second;
 						current.promise.set_value(x.result);

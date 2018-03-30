@@ -66,21 +66,23 @@ void add_fd(int fd, int epoll_mode) {
 			epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
 			fds.erase(it);
 		} else {
-			util::log
-					<< "Descriptor " + std::to_string(fd)
-							+ " already added to dispatch";
-			util::log
-					<< std::string("It can") + (it->second.recycle_marked ? "   " : "not")
-							+ "be recycled and has "
-							+ std::to_string(it->second.threads.size())
-							+ " triggers\n";
+			auto log = util::log();
+			log << "Descriptor " << std::to_string(fd)
+					<< " already added to dispatch" << util::newl;
+			log << "It can" << (it->second.recycle_marked ? "   " : "not")
+					<< "be recycled and has "
+					<< std::to_string(it->second.threads.size()) << " triggers";
 			throw new std::logic_error(
 					"Descriptor " + std::to_string(fd)
 							+ " already added to dispatch");
 		}
 	}
 	fds.insert( { fd, fd_hold(fd) });
-	epoll_event ev { epoll_mode, { .fd = fd } }; // @suppress("Symbol is not resolved")
+	unsigned int fd_uns = (unsigned int) fd;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnarrowing"
+	epoll_event ev { epoll_mode, { .fd = fd_uns } }; // @suppress("Symbol is not resolved")
+#pragma GCC diagnostic pop
 	epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev);
 	return;
 }
@@ -91,11 +93,11 @@ void link(int fd, int epoll_target, int event_id) {
 	auto evd = events.find(event_id);
 	link_holer l { event_id, epoll_target };
 	if (fdd == fds.end()) {
-		util::log << "Linking unregistered fd to event " << event_id << "\n";
+		util::log() << "Linking unregistered fd to event " << event_id;
 		throw new std::invalid_argument("Linking unregistered fd");
 	}
 	if (evd == events.end()) {
-		util::log << "Linking unregistered event to fd " << fd << "\n";
+		util::log() << "Linking unregistered event to fd " << fd;
 		throw new std::invalid_argument("Linking unregistered event");
 	}
 	fdd->second.threads.push_back(l);
@@ -107,12 +109,11 @@ void unlink(int fd, int event_id) {
 	auto fdd = fds.find(fd);
 	auto evd = events.find(event_id);
 	if (fdd == fds.end()) {
-		util::log << "Unlinking unregistered fd from event " << event_id
-				<< "\n";
+		util::log() << "Unlinking unregistered fd from event " << event_id;
 		throw new std::invalid_argument("Unlinking unregistered fd");
 	}
 	if (evd == events.end()) {
-		util::log << "Unlinking unregistered event from fd " << fd << "\n";
+		util::log() << "Unlinking unregistered event from fd " << fd;
 		throw new std::invalid_argument("Unlinking unregistered event");
 	}
 	std::vector<link_holer> & vec = fdd->second.threads;
@@ -219,10 +220,11 @@ void gc() {
 		}
 	}
 	int ev_end = events.size(), fd_end = fds.size();
-	util::log << "GC Events: " << ev_start - ev_end << " deleted, " << ev_end
-			<< " left\n";
-	util::log << "GC Files : " << fd_start - fd_end << " deleted, " << fd_end
-			<< " left\n";
+	auto log = util::log();
+	log << "GC Events: " << ev_start - ev_end << " deleted, " << ev_end
+			<< " left";
+	log << "GC Files : " << fd_start - fd_end << " deleted, " << fd_end
+			<< " left";
 }
 
 void dispatch_loop() {

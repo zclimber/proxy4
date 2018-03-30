@@ -1,8 +1,6 @@
 #include "relay.h"
 #include "util.h"
 
-using util::log;
-
 #include <sys/socket.h>
 #include <unistd.h>
 #include <cstdint>
@@ -14,6 +12,7 @@ void relay::loop_once() {
 	int clr_errno, clw_errno;
 	char t[8192];
 	while (true) {
+		auto log = util::log();
 		errno = 0;
 		clr = clw = 0;
 		switch (st) {
@@ -37,16 +36,17 @@ void relay::loop_once() {
 			clw_errno = errno;
 			errno = 0;
 
+
 			log << "Relay " << in_fd.fd() << " -> " << out_fd.fd() << " in "
-					<< clr << " out " << clw << " bufs " << buf.size() << "\n";
+					<< clr << " out " << clw << " bufs " << buf.size();
 
 			if (clw < 0) {
 				st = FINISHED;
 				log << "Relay " << in_fd.fd() << " -> " << out_fd.fd()
-						<< " done\n";
+						<< " done";
 			} else if (clr == 0 || (clr == -1 && clr_errno != EAGAIN)) {
 				log << "Relay " << in_fd.fd() << " -> " << out_fd.fd()
-						<< " read all\n";
+						<< " read all";
 				st = WRITE_REST;
 			} else if (clr_errno == EAGAIN
 					&& (buf.size() == 0 || clw_errno == EAGAIN)) {
@@ -63,7 +63,7 @@ void relay::loop_once() {
 
 			if (buf.empty() || (clw_errno == -1 && clw_errno != EAGAIN)) {
 				log << "Relay " << in_fd.fd() << " -> " << out_fd.fd()
-						<< " done\n";
+						<< " done";
 				st = FINISHED;
 			} else if (clw_errno == EAGAIN) {
 				return;
