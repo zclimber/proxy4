@@ -51,6 +51,8 @@ public:
 	}
 };
 
+std::string error();
+
 logger log();
 
 void name_fd(int fd, std::string fd_name);

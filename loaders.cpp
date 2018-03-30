@@ -16,8 +16,6 @@
 
 constexpr int READ_BUFFER_SIZE = 1 << 12;
 
-//std::atomic_int ii(0);
-
 using intprom = std::promise<int>;
 
 void finish(dispatch::fd_ref & sock, const dispatch::event_ref & next_action,

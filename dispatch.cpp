@@ -278,37 +278,45 @@ void arm_manual(const event_ref& ev) {
 	::arm_manual(ev.id());
 }
 
+util::logger& operator <<(util::logger& log, const event_ref& ref) {
+	log << "(event " << ref.event_id << ")";
+	return log;
+}
+
+util::logger& operator <<(util::logger& log, const fd_ref& ref) {
+	log << util::get_name(ref.fd_id);
+	return log;
+}
+
 void create_dispatcher_thread() {
 	dispatcher = std::thread(dispatch_loop);
 }
 
-}
-
-dispatch::event_ref::event_ref() :
+event_ref::event_ref() :
 		event_id(-1) {
 }
 
-dispatch::event_ref::event_ref(const std::function<void()> & event) {
+event_ref::event_ref(const std::function<void()> & event) {
 	event_id = add_event(event);
 }
 
-int dispatch::event_ref::id() const {
+int event_ref::id() const {
 	return event_id;
 }
 
-void dispatch::event_ref::recycle() {
+void event_ref::recycle() {
 	if (event_id != -1) {
 		::recycle_event(event_id);
 		event_id = -1;
 	}
 }
 
-dispatch::event_ref::event_ref(event_ref&& oth) {
+event_ref::event_ref(event_ref&& oth) {
 	event_id = oth.event_id;
 	oth.event_id = -1;
 }
 
-dispatch::event_ref& dispatch::event_ref::operator =(event_ref&& oth) {
+event_ref& dispatch::event_ref::operator =(event_ref&& oth) {
 	if (this != &oth) {
 		event_id = oth.event_id;
 		oth.event_id = -1;
@@ -316,36 +324,36 @@ dispatch::event_ref& dispatch::event_ref::operator =(event_ref&& oth) {
 	return *this;
 }
 
-dispatch::event_ref::~event_ref() {
+event_ref::~event_ref() {
 	recycle();
 }
 
-dispatch::fd_ref::fd_ref() :
+fd_ref::fd_ref() :
 		fd_id(-1) {
 }
 
-dispatch::fd_ref::fd_ref(int id, int epoll_mode) :
+fd_ref::fd_ref(int id, int epoll_mode) :
 		fd_id(id) {
 	add_fd(id, epoll_mode);
 }
 
-int dispatch::fd_ref::fd() const {
+int fd_ref::fd() const {
 	return fd_id;
 }
 
-void dispatch::fd_ref::recycle() {
+void fd_ref::recycle() {
 	if (fd_id != -1) {
 		::recycle_fd(fd_id);
 		fd_id = -1;
 	}
 }
 
-dispatch::fd_ref::fd_ref(fd_ref&& oth) {
+fd_ref::fd_ref(fd_ref&& oth) {
 	fd_id = oth.fd_id;
 	oth.fd_id = -1;
 }
 
-dispatch::fd_ref& dispatch::fd_ref::operator =(fd_ref&& oth) {
+fd_ref& dispatch::fd_ref::operator =(fd_ref&& oth) {
 	if (this != &oth) {
 		fd_id = oth.fd_id;
 		oth.fd_id = -1;
@@ -353,6 +361,8 @@ dispatch::fd_ref& dispatch::fd_ref::operator =(fd_ref&& oth) {
 	return *this;
 }
 
-dispatch::fd_ref::~fd_ref() {
+fd_ref::~fd_ref() {
 	recycle();
+}
+
 }

@@ -8,6 +8,7 @@
 #include "util.h"
 
 #include <sys/socket.h>
+#include <cstring>
 #include <unistd.h>
 #include <unordered_map>
 
@@ -15,7 +16,7 @@ namespace util {
 
 newline newl;
 
-logger log(){
+logger log() {
 	return logger();
 }
 
@@ -30,6 +31,12 @@ const std::string& get_name(int fd) {
 		names[fd] = std::to_string(fd);
 	}
 	return names[fd];
+}
+
+std::string error() {
+	std::string res(strerror(errno));
+	errno = 0;
+	return res;
 }
 
 }

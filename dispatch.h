@@ -9,6 +9,7 @@
 #define DISPATCH_H_
 
 #include <functional>
+#include "util.h"
 
 #include <sys/epoll.h>
 
@@ -29,7 +30,12 @@ public:
 	void recycle();
 
 	~event_ref();
+
+	friend util::logger & operator << (util::logger&, const event_ref &);
 };
+
+
+util::logger & operator << (util::logger&, const event_ref &);
 
 class fd_ref {
 	int fd_id;
@@ -46,7 +52,11 @@ public:
 	void recycle();
 
 	~fd_ref();
+
+	friend util::logger & operator << (util::logger&, const fd_ref &);
 };
+
+util::logger & operator << (util::logger&, const fd_ref &);
 
 void link(const fd_ref &, int epoll_target, const event_ref &);
 void unlink(const fd_ref &, const event_ref &);

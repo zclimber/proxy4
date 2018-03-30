@@ -326,27 +326,40 @@ int main(int argc, char** argv) {
 		exit(0);
 	}
 	int port = atoi(argv[1]);
-	dispatch::create_dispatcher_thread();
-
+	if(port < 1 || port > UINT16_MAX){
+		printf("Invalid port number %s", argv[1]);
+		exit(0);
+	}
 	int accept_fd = socket(AF_INET, SOCK_STREAM, 0);
+
 	if (accept_fd == -1) {
 		printf("Unable to open socket");
 		exit(0);
 	}
 
 	int incr = 1;
-	setsockopt(accept_fd, SOL_SOCKET, SO_REUSEADDR, &incr, sizeof(incr));
-	setsockopt(accept_fd, SOL_SOCKET, SO_REUSEPORT, &incr, sizeof(incr));
+	int reuseaddr = setsockopt(accept_fd, SOL_SOCKET, SO_REUSEADDR, &incr,
+			sizeof(incr));
+	int reuseport = setsockopt(accept_fd, SOL_SOCKET, SO_REUSEPORT, &incr,
+			sizeof(incr));
+
+	if (reuseaddr == -1 || reuseport == -1) {
+		printf("Unable to set socket options");
+		exit(0);
+	}
 
 	struct sockaddr_in srv_addr;
 	srv_addr.sin_family = AF_INET;
 	srv_addr.sin_addr.s_addr = INADDR_ANY;
 	srv_addr.sin_port = htons((short) port);
 	if (bind(accept_fd, (sockaddr *) &srv_addr, sizeof(srv_addr)) == -1) {
-		printf("Unable to bind to %d", port);
-		throw new std::exception();
+		printf("Unable to bind accepting socket to port %d", port);
+		exit(0);
 	}
-	listen(accept_fd, 10);
+	if (listen(accept_fd, 10) == -1) {
+		printf("Unable to listen on port %d", port);
+		exit(0);
+	}
 
 	dispatch::fd_ref acceptor(accept_fd, EPOLLIN);
 
@@ -354,15 +367,18 @@ int main(int argc, char** argv) {
 		struct sockaddr_in cli_addr;
 		socklen_t cli_size = sizeof(cli_addr);
 		int new_client = accept(accept_fd, (sockaddr *) &cli_addr, &cli_size);
+		if(new_client == -1) {
+			util::log() << "Error accepting new client: " << util::error();
+			return;
+		}
 		util::log() << "Accepted client " << new_client;
 		auto prox = std::make_shared<proxy_connection>(new_client);
 		prox->start();
-//			std::thread thr(connection_proc, new_client);
-//			thr.detach();
-//		log << "Finished client " << new_client << "\n";
-		});
+	});
 
 	dispatch::link(acceptor, EPOLLIN, accept_ev);
 
-	std::cin >> accept_fd;
+	util::log() << "Started proxy server on port " << port;
+
+	dispatch::run_dispatcher_in_current_thread();
 }
