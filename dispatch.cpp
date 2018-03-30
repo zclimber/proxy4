@@ -221,9 +221,9 @@ void gc() {
 	int ev_end = events.size(), fd_end = fds.size();
 	auto log = util::log();
 	log << "GC Events: " << ev_start - ev_end << " deleted, " << ev_end
-			<< " left";
+			<< " left" << util::newl;
 	log << "GC Files : " << fd_start - fd_end << " deleted, " << fd_end
-			<< " left";
+			<< " left" << util::newl;
 }
 
 void dispatch_loop() {

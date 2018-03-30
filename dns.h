@@ -22,5 +22,7 @@ int get_dns_eventfd();
 
 std::vector<dns_response> get_ready_requests();
 
+void start_dns_resolver();
+
 
 #endif /* DNS_H_ */

@@ -48,7 +48,7 @@ std::vector<dns_response> get_ready_requests() {
 	return new_vec;
 }
 
-void loop() {
+void start_dns_resolver() {
 	std::unique_lock<std::mutex> read_lock(req_mutex, std::defer_lock),
 			write_lock(resp_mutex, std::defer_lock);
 	auto it = reqs.begin();
@@ -114,5 +114,3 @@ void loop() {
 		write(event_fd, &ll, sizeof(ll));
 	}
 }
-
-static std::thread dns_thread(loop);

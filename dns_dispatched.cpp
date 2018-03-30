@@ -1,9 +1,9 @@
 #include "dns_dispatched.h"
 
-#include <sys/epoll.h>
 #include <unistd.h>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "dns.h"
 
@@ -30,7 +30,8 @@ dispatch::fd_ref event_fd;
 
 #include "util.h"
 
-int init_dispatched_dns() {
+void init_dispatched_dns() {
+	static std::thread dns_thread(start_dns_resolver);
 	event_fd = dispatch::fd_ref(get_dns_eventfd(), EPOLLIN);
 	dispatch::event_ref event(
 			[] {
@@ -50,7 +51,4 @@ int init_dispatched_dns() {
 				}
 			});
 	dispatch::link(event_fd, EPOLLIN, event);
-	return 0;
 }
-
-static int init_int = init_dispatched_dns();

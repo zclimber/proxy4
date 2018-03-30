@@ -378,6 +378,8 @@ int main(int argc, char** argv) {
 
 	dispatch::link(acceptor, EPOLLIN, accept_ev);
 
+	init_dispatched_dns();
+
 	util::log() << "Started proxy server on port " << port;
 
 	dispatch::run_dispatcher_in_current_thread();
