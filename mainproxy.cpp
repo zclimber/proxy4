@@ -333,7 +333,7 @@ int main(int argc, char** argv) {
 	int accept_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (accept_fd == -1) {
 		printf("Unable to open socket");
-		throw new std::exception();
+		exit(0);
 	}
 
 	int incr = 1;

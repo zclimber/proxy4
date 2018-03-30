@@ -236,7 +236,7 @@ std::future<int> async_load::upload(std::string& buf, dispatch::fd_ref& sock,
 			[&, prom, offs]() mutable {
 				util::log << "Upload s" << sock.fd() << " : ";
 				while(offs < buf.size()) {
-					int rs = send(sock.fd(), buf.c_str() + offs, buf.size() - offs, MSG_DONTWAIT);
+					int rs = send(sock.fd(), buf.c_str() + offs, buf.size() - offs, MSG_DONTWAIT | MSG_NOSIGNAL);
 					util::log.cnt() << rs << " ";
 					if(rs > 0) {
 						offs += rs;
