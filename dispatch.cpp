@@ -78,10 +78,9 @@ void add_fd(int fd, int epoll_mode) {
 		}
 	}
 	fds.insert( { fd, fd_hold(fd) });
-	unsigned int fd_uns = (unsigned int) fd;
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wnarrowing"
-	epoll_event ev { epoll_mode, { .fd = fd_uns } }; // @suppress("Symbol is not resolved")
+	epoll_event ev { epoll_mode, { .fd = fd } }; // @suppress("Symbol is not resolved")
 #pragma GCC diagnostic pop
 	epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev);
 	return;
