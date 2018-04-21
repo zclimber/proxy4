@@ -1,20 +1,15 @@
 #include <asm-generic/socket.h>
-#include <bits/exception.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
 #include <future>
-#include <iostream>
 #include <memory>
-#include <mutex>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -56,16 +51,11 @@ private:
 		event_vec.emplace_back( // @suppress("Ambiguous problem")
 				std::bind(&proxy_connection::process_request_headers,
 						shared_from_this()));
-		util::name_fd(client_sock.fd(), string("client") + std::to_string(client_sock.fd()));
+		util::name_fd(client_sock.fd(),
+				string("client") + std::to_string(client_sock.fd()));
 		util::log() << "Start loading request headers on socket "
 				<< client_sock;
-		async_load::headers(buf, client_sock, event_vec.back(),
-				event_vec[0]);
-//		auto t = xfut.wait_for(std::chrono::seconds(20));
-//		if (t == std::future_status::timeout || xfut.get() == -1) {
-//			return;
-//		}
-//		process_request_headers();
+		async_load::headers(buf, client_sock, event_vec.back(), event_vec[0]);
 	}
 	void process_request_headers() {
 //		log << "Got headers on socket " << client_sock << "\n";
@@ -87,8 +77,6 @@ private:
 						shared_from_this(), hp));
 
 		fut = connect_to_remote_server(host, port, event_vec.back());
-
-//		process_request_headers_2(hp);
 	}
 	void process_request_headers_2(header_parser hp) {
 		int ssock = fut.get();
@@ -118,7 +106,6 @@ private:
 		hp.set_string(buf);
 		hp.headers()["Connection"] = "close";
 		buf = hp.assemble_head() + hp.excess();
-		std::future<int> xfut;
 
 		event_vec.emplace_back( // @suppress("Ambiguous problem")
 				std::bind(&proxy_connection::upload_request_to_server_2,
@@ -139,38 +126,15 @@ private:
 		} else {
 			upload_request_to_server_2();
 			return;
-//			std::promise<int> pr;
-//			pr.set_value(0);
-//			xfut = pr.get_future();
-			// no body
 		}
-
-//		std::future_status t = xfut.wait_for(std::chrono::seconds(20));
-//		if (t == std::future_status::timeout || xfut.get() == -1) {
-//			return;
-//		}
-//
-////		log << "Downloaded client request from " << client_sock << " "
-////				<< buf.length() << " bytes\n";
-//
-//		upload_request_to_server_2();
 	}
 	void upload_request_to_server_2() {
-
-//		event_vec.push_back(dispatch::event_ref());
 
 		event_vec.emplace_back( // @suppress("Ambiguous problem")
 				std::bind(&proxy_connection::upload_request_to_server_3,
 						shared_from_this()));
 
-		async_load::upload(buf, server_sock,
-				event_vec.back(), event_vec[1]);
-//		auto tw = xfut.wait_for(std::chrono::seconds(20));
-//		if (tw == std::future_status::timeout || xfut.get() == -1) {
-//			return;
-//		}
-//
-//		upload_request_to_server_3();
+		async_load::upload(buf, server_sock, event_vec.back(), event_vec[1]);
 	}
 	void upload_request_to_server_3() {
 
@@ -178,19 +142,10 @@ private:
 //				<< server_sock << "\n";
 		buf.clear();
 
-//		event_vec.push_back(dispatch::event_ref());
-
 		event_vec.emplace_back( // @suppress("Ambiguous problem")
 				std::bind(&proxy_connection::process_response_headers,
 						shared_from_this()));
-		async_load::headers(buf, server_sock,
-				event_vec.back(), event_vec[0]);
-//		auto t = xfut.wait_for(std::chrono::seconds(20));
-//		if (t == std::future_status::timeout || xfut.get() == -1) {
-//			return;
-//		}
-
-//		process_response_headers();
+		async_load::headers(buf, server_sock, event_vec.back(), event_vec[0]);
 	}
 
 	void process_response_headers() {
@@ -199,8 +154,6 @@ private:
 		hp.set_string(buf);
 		hp.headers()["Connection"] = "close";
 		buf = hp.assemble_head() + hp.excess();
-
-//		event_vec.push_back(dispatch::event_ref());
 
 		event_vec.emplace_back( // @suppress("Ambiguous problem")
 				std::bind(&proxy_connection::process_response_headers_2,
@@ -222,20 +175,11 @@ private:
 			INT_LEAST32_MAX, event_vec.back(), event_vec.back());
 			// pump until ends
 		}
-//		t = xfut.wait_for(std::chrono::seconds(20));
-//		if (t == std::future_status::timeout || (!pass && xfut.get() == -1)) {
-//			return;
-//		}
-//
-//
-//		process_response_headers_2();
 
 	}
 	void process_response_headers_2() {
 //		log << "Downloaded server response from " << server_sock.fd() << " "
 //				<< buf.length() << " bytes\n";
-
-//		event_vec.push_back(dispatch::event_ref());
 		auto thisptr = shared_from_this();
 		event_vec.emplace_back( // @suppress("Ambiguous problem")
 				[this, thisptr] {
@@ -243,16 +187,7 @@ private:
 					<< client_sock;
 					cleanup();
 				});
-		async_load::upload(buf, client_sock, event_vec.back(),
-				event_vec[1]);
-//		auto tw = xfut.wait_for(std::chrono::seconds(20));
-//		if (tw == std::future_status::timeout || xfut.get() == -1) {
-//			return;
-//		}
-//
-//		log << "Uploaded server response from " << server_sock.fd() << " to "
-//				<< client_sock.fd() << "\n";
-//		cleanup();
+		async_load::upload(buf, client_sock, event_vec.back(), event_vec[1]);
 	}
 
 	void start_connect_tunnel() {
@@ -276,12 +211,10 @@ private:
 	}
 
 	void fail_loading_client() {
-		// TODO
 		util::log() << "Failed loading client fd " << client_sock;
 		cleanup();
 	}
 	void fail_connecting_to_server() {
-		// TODO
 		header_parser hp;
 		if (server_sock.fd() > 0) {
 			hp.request() = "HTTP/1.1 502 Bad Gateway";
@@ -290,7 +223,8 @@ private:
 		}
 		util::log() << "failed connection to server " << server_sock
 				<< " with client fd " << client_sock;
-		cleanup();
+		std::string message = hp.assemble_head();
+		async_load::upload(message, client_sock, event_vec[0], event_vec[0]);
 	}
 	void cleanup() {
 		if (client_sock.fd() != -1) {
@@ -310,16 +244,6 @@ public:
 	~proxy_connection() {
 	}
 };
-
-std::mutex mtx;
-
-void connection_proc(int client_socket) {
-//	std::lock_guard<std::mutex> lg(mtx);
-	auto prox = std::make_shared<proxy_connection>(client_socket);
-	prox->start();
-//	lg.~lock_guard();
-	std::this_thread::sleep_for(std::chrono::seconds(10));
-}
 
 int main(int argc, char** argv) {
 	if (argc <= 1) {

@@ -18,7 +18,8 @@ class relay: std::enable_shared_from_this<relay> {
 	enum state {
 		READ_WRITE, WRITE_REST, FINISHED
 	};
-	dispatch::fd_ref & in_fd, &out_fd;
+	dispatch::fd_ref & in_fd;
+	dispatch::fd_ref & out_fd;
 	state st;
 	std::string buf;
 	std::function<void()> finisher;

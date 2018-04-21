@@ -6,9 +6,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstdlib>
-#include <cstring>
 #include <functional>
-#include <memory>
 #include <string_view>
 #include <utility>
 
@@ -44,11 +42,12 @@ void async_load_generic(std::string& buf, dispatch::fd_ref & sock,
 		int res = recv(sock.fd(), t, sizeof(t), MSG_DONTWAIT);
 		log << res << " ";
 		if (res <= 0) {
-			log << strerror(errno) << " ";
+			int eno = errno;
+			log << util::error() << " ";
 			if (res == 0) {
 				log << "EOF";
 				finish(sock, fail_action, log);
-			} else if (res == -1 && errno == EAGAIN) {
+			} else if (res == -1 && eno == EAGAIN) {
 				log << "WAIT";
 			} else {
 				log << "FAIL";
@@ -87,8 +86,8 @@ void async_load::headers(std::string& buf, dispatch::fd_ref & sock,
 	util::log() << "Headers " << d.id();
 }
 
-void async_load::fixed(std::string& buf, dispatch::fd_ref & sock,
-		int length, const dispatch::event_ref & next_action,
+void async_load::fixed(std::string& buf, dispatch::fd_ref & sock, int length,
+		const dispatch::event_ref & next_action,
 		const dispatch::event_ref & fail_action) {
 	dispatch::event_ref d(
 			[&buf, &sock, &next_action, &fail_action, length]() mutable {
@@ -128,12 +127,11 @@ void chunked_check(dispatch::fd_ref & sock,
 			length_pending = false;
 			log << "L " << res << " ";
 			if (res <= 0) {
-				log << strerror(errno) << " ";
+				int eno = errno;
+				log << util::error() << " ";
 				if (res == 0) {
 					log << "EOF";
-//					finish(sock, fail_action);
-//					prom->set_value(-1);
-				} else if (res == -1 && errno == EAGAIN) {
+				} else if (res == -1 && eno == EAGAIN) {
 					log << "WAIT";
 				} else {
 					log << "FAIL";
