@@ -25,30 +25,17 @@ extern newline newl;
 class logger {
 	std::ostringstream ss;
 public:
-	void flush() {
-		if (ss.rdbuf()->str().length() > 0) {
-			auto tm = std::chrono::system_clock::to_time_t(
-					std::chrono::system_clock::now());
-			std::clog << std::put_time(std::localtime(&tm), "%T") << " "
-					<< ss.rdbuf()->str() << "\n";
-			ss.rdbuf()->str(std::string());
-		}
-	}
+	void flush();
 	logger() = default;
 	logger(logger &&) = default;
 	logger(const logger &) = delete;
-	logger & operator <<(const newline &) {
-		flush();
-		return *this;
-	}
+	logger & operator <<(const newline &);
 	template<class T>
 	logger & operator <<(T t) {
 		ss << t;
 		return *this;
 	}
-	~logger() {
-		flush();
-	}
+	~logger();
 };
 
 std::string error();

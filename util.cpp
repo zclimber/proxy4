@@ -20,6 +20,26 @@ logger log() {
 	return logger();
 }
 
+void logger::flush() {
+	std::string str = ss.rdbuf()->str();
+	if (str.length() > 0) {
+		std::ostringstream().swap(ss);
+		auto tm = std::chrono::system_clock::to_time_t(
+				std::chrono::system_clock::now());
+		std::clog << std::put_time(std::localtime(&tm), "%T") << " " << str
+				<< "\n";
+	}
+}
+
+logger & logger::operator <<(const newline &) {
+	flush();
+	return *this;
+}
+
+logger::~logger() {
+	flush();
+}
+
 std::unordered_map<int, std::string> names;
 
 void name_fd(int fd, std::string fd_name) {
