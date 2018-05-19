@@ -15,6 +15,8 @@
 #include <iostream>
 #include <string>
 
+#include <memory>
+
 namespace util {
 
 struct newline {
@@ -23,7 +25,8 @@ struct newline {
 extern newline newl;
 
 class logger {
-	std::ostringstream ss;
+	std::unique_ptr<std::ostringstream> uss = std::make_unique<std::ostringstream>();
+//	std::ostringstream ss;
 public:
 	void flush();
 	logger() = default;
@@ -32,7 +35,7 @@ public:
 	logger & operator <<(const newline &);
 	template<class T>
 	logger & operator <<(T t) {
-		ss << t;
+		(*uss.get()) << t;
 		return *this;
 	}
 	~logger();

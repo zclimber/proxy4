@@ -21,9 +21,9 @@ logger log() {
 }
 
 void logger::flush() {
-	std::string str = ss.str();
+	std::string str = uss.get()->str();
 	if (str.length() > 0) {
-		std::ostringstream().swap(ss);
+		uss = std::make_unique<std::ostringstream>();
 		auto tm = std::chrono::system_clock::to_time_t(
 				std::chrono::system_clock::now());
 		std::clog << std::put_time(std::localtime(&tm), "%T") << " " << str
