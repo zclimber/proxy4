@@ -7,7 +7,6 @@
 #include <cerrno>
 #include <cstdlib>
 #include <functional>
-#include <string_view>
 #include <utility>
 
 #include "util.h"
@@ -103,7 +102,7 @@ void async_load::fixed(std::string& buf, dispatch::fd_ref & sock, int length,
 	dispatch::arm_manual(d);
 }
 
-std::pair<int, int> get_new_chunk_size(std::string_view sw) {
+std::pair<int, int> get_new_chunk_size(const std::string & sw) {
 	int rs = 0;
 	rs = std::strtol(sw.data(), nullptr, 16);
 	size_t newt = sw.find("\r\n");
@@ -149,8 +148,7 @@ void chunked_check(dispatch::fd_ref & sock,
 				chunkl -= mn;
 				log << "C- " << mn << " ";
 			} else if (chunkl == 0) {
-				std::string_view sw(buf);
-				sw.remove_prefix(cpos);
+				std::string sw(buf, cpos, cpos + 64);
 				auto gn = get_new_chunk_size(sw);
 				if (gn.first < 0) {
 					length_pending = true;
