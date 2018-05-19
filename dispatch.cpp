@@ -71,8 +71,7 @@ void add_fd(int fd, int epoll_mode) {
 					std::string("Descriptor ") + std::to_string(fd)+  " already added to dispatch\n";
 			err_str += std::string("It can") + (it->second.recycle_marked ? "   " : "not") + "be recycled and has "
 					+ std::to_string(it->second.threads.size()) + " triggers";
-			std::logic_error err(err_str);
-			throw err;
+			throw std::logic_error(err_str);
 		}
 	}
 	fds.insert( { fd, fd_hold(fd) });
@@ -167,8 +166,8 @@ static std::thread dispatcher;
 void epoll_mark() {
 	epoll_event poll[1000];
 	int ev = epoll_wait(epoll_fd, poll, 1000, -1);
-	std::lock_guard<std::mutex> lg(data_mutex);
 	std::unique_lock<std::recursive_mutex> arm(armed_mutex);
+	std::lock_guard<std::mutex> lg(data_mutex);
 	for (int i = 0; i < ev; i++) {
 		auto fdd = fds.find(poll[i].data.fd);
 		for (auto x : fdd->second.threads) {
