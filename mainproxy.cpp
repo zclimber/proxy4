@@ -80,7 +80,7 @@ private:
 		int ssock = fut.get();
 		if (ssock == -1) {
 			util::log() << "Cannot connect to server " << hp.headers()["Host"];
-			fail_connecting_to_server();
+			dispatch::arm_manual(event_vec[1]);
 			return;
 		}
 		server_sock = dispatch::fd_ref(ssock,
@@ -193,7 +193,7 @@ private:
 		header_parser hp;
 		hp.request() = "HTTP/1.1 200 Connection established";
 		hp.headers()["Proxy-agent"] = "mylittleproxy 0.1";
-		std::string newbuf = buf;
+		std::string newbuf = hp.assemble_head();
 		auto thisptr = shared_from_this();
 		auto fin = [thisptr]() -> void {
 			thisptr->relaycount--;
@@ -222,6 +222,7 @@ private:
 		}
 		util::log() << "failed connection to server " << server_sock
 				<< " with client fd " << client_sock;
+
 		std::string message = hp.assemble_head();
 
 		auto thisptr = shared_from_this();
