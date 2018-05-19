@@ -21,7 +21,7 @@ logger log() {
 }
 
 void logger::flush() {
-	std::string str = ss.rdbuf()->str();
+	std::string str = ss.str();
 	if (str.length() > 0) {
 		std::ostringstream().swap(ss);
 		auto tm = std::chrono::system_clock::to_time_t(
