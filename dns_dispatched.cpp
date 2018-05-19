@@ -30,25 +30,28 @@ dispatch::fd_ref event_fd;
 
 #include "util.h"
 
-void init_dispatched_dns() {
-	static std::thread dns_thread(start_dns_resolver);
-	event_fd = dispatch::fd_ref(get_dns_eventfd(), EPOLLIN);
-	dispatch::event_ref event(
-			[] {
-				long long ev = 0;
-				read(get_dns_eventfd(), &ev, sizeof(ev));
-				auto new_ids = get_ready_requests();
-				for(auto x : new_ids) {
-					auto it = tasks.find(x.identifier);
-					if(it == tasks.end()) {
-						util::log() << "DNS error : request " << x.identifier << " doesn't exist but resolved";
-					} else {
-						task & current = it->second;
-						current.promise.set_value(x.result);
-						dispatch::arm_manual(current.next_event);
-						tasks.erase(it);
+std::thread init_dispatched_dns() {
+	try {
+		event_fd = dispatch::fd_ref(get_dns_eventfd(), EPOLLIN);
+		dispatch::event_ref event(
+				[] {
+					long long ev = 0;
+					read(get_dns_eventfd(), &ev, sizeof(ev));
+					auto new_ids = get_ready_requests();
+					for(auto x : new_ids) {
+						auto it = tasks.find(x.identifier);
+						if(it == tasks.end()) {
+							util::log() << "DNS error : request " << x.identifier << " doesn't exist but resolved";
+						} else {
+							task & current = it->second;
+							current.promise.set_value(x.result);
+							dispatch::arm_manual(current.next_event);
+							tasks.erase(it);
+						}
 					}
-				}
-			});
-	dispatch::link(event_fd, EPOLLIN, event);
+				});
+		dispatch::link(event_fd, EPOLLIN, event);
+	} catch (const std::logic_error & e) {
+	}
+	return std::thread(start_dns_resolver);
 }
