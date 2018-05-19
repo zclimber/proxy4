@@ -1,4 +1,3 @@
-#include <asm-generic/socket.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -10,19 +9,18 @@
 #include <future>
 #include <memory>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
 #include "dispatch.h"
+#include "dns_dispatched.h"
 #include "http.h"
+#include "loaders.h"
 #include "relay.h"
 #include "util.h"
 
 using std::string;
-
-#include "dns_dispatched.h"
-
-#include "loaders.h"
 
 class proxy_connection: public std::enable_shared_from_this<proxy_connection> {
 	dispatch::fd_ref client_sock, server_sock;
@@ -82,7 +80,8 @@ private:
 		int ssock = fut.get();
 		if (ssock == -1) {
 			util::log() << "Cannot connect to server " << hp.headers()["Host"];
-			cleanup();
+			fail_connecting_to_server();
+			return;
 		}
 		server_sock = dispatch::fd_ref(ssock,
 		EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET);
@@ -117,7 +116,7 @@ private:
 			// chunked
 
 			async_load::chunked(buf, client_sock, event_vec.back(),
-					event_vec[0]);
+					event_vec[1]);
 		} else if (hp.headers().count("Content-Length")) {
 			async_load::fixed(buf, client_sock,
 					stol(hp.headers()["Content-Length"]) - hp.excess().length(),
@@ -145,7 +144,7 @@ private:
 		event_vec.emplace_back( // @suppress("Ambiguous problem")
 				std::bind(&proxy_connection::process_response_headers,
 						shared_from_this()));
-		async_load::headers(buf, server_sock, event_vec.back(), event_vec[0]);
+		async_load::headers(buf, server_sock, event_vec.back(), event_vec[1]);
 	}
 
 	void process_response_headers() {
@@ -224,7 +223,16 @@ private:
 		util::log() << "failed connection to server " << server_sock
 				<< " with client fd " << client_sock;
 		std::string message = hp.assemble_head();
-		async_load::upload(message, client_sock, event_vec[0], event_vec[0]);
+
+		auto thisptr = shared_from_this();
+		auto fin = [thisptr]() -> void {
+			thisptr->cleanup();
+		};
+		event_vec.emplace_back( // @suppress("Ambiguous problem")
+				fin);
+
+		async_load::upload(message, client_sock, event_vec.back(),
+				event_vec.back());
 	}
 	void cleanup() {
 		if (client_sock.fd() != -1) {
@@ -247,7 +255,7 @@ public:
 
 int main(int argc, char** argv) {
 	if (argc <= 1) {
-		printf("Usage: proxy port\n");
+		printf("Usage: proxy port (dns_threads)\n");
 		exit(0);
 	}
 	int port = atoi(argv[1]);
@@ -260,6 +268,17 @@ int main(int argc, char** argv) {
 	if (accept_fd == -1) {
 		printf("Unable to open socket");
 		exit(0);
+	}
+
+	int dns_threads = 0;
+	if (argc > 2) {
+		dns_threads = atoi(argv[2]);
+		if (dns_threads < 1 || dns_threads > 20) {
+			printf("Invalid amount of DNS resolver threads %s", argv[1]);
+			exit(0);
+		}
+	} else {
+		dns_threads = 3;
 	}
 
 	int incr = 1;
@@ -303,7 +322,11 @@ int main(int argc, char** argv) {
 
 	dispatch::link(acceptor, EPOLLIN, accept_ev);
 
-	init_dispatched_dns();
+	std::vector<std::thread> dns_threads_list(dns_threads);
+
+	for (int i = 0; i < dns_threads; i++) {
+		dns_threads_list[i] = init_dispatched_dns();
+	}
 
 	util::log() << "Started proxy server on port " << port;
 
