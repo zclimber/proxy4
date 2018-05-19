@@ -14,7 +14,7 @@
 
 #include "dispatch.h"
 
-class relay: std::enable_shared_from_this<relay> {
+class relay: public std::enable_shared_from_this<relay> {
 	enum state {
 		READ_WRITE, WRITE_REST, FINISHED
 	};
