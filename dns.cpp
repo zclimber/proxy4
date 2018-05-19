@@ -86,6 +86,7 @@ void start_dns_resolver() {
 		case EAI_NONAME:
 		case EAI_FAIL:
 		case EAI_SERVICE:
+		case EAI_NODATA:
 			util::log() << "Unable to resolve " << req.host << ":" << req.port
 					<< " . " << gai_strerror(result);
 			break;
