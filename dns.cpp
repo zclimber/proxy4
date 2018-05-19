@@ -34,7 +34,7 @@ int enqueue_request(const std::string& host, const std::string& port,
 	request new_req { host, port, ids++, timeout };
 	std::lock_guard<std::mutex> lg(req_mutex);
 	reqs.push_back(new_req);
-	task_sleeper.notify_all();
+	task_sleeper.notify_one();
 	return new_req.id;
 }
 
@@ -44,55 +44,60 @@ int get_dns_eventfd() {
 
 std::vector<dns_response> get_ready_requests() {
 	std::lock_guard<std::mutex> lg(resp_mutex);
-	std::vector<dns_response> new_vec = std::move(ready);
+	std::vector<dns_response> new_vec(ready);
+	ready.clear();
 	return new_vec;
+}
+
+request get_request() {
+	std::unique_lock<std::mutex> read_lock(req_mutex);
+	while (reqs.empty()) {
+		task_sleeper.wait(read_lock);
+	}
+	request rq = reqs.front();
+	reqs.pop_front();
+	return rq;
+}
+
+void return_request_to_queue(request req) {
+	std::lock_guard<std::mutex> lg(req_mutex);
+	reqs.push_back(req);
 }
 
 void start_dns_resolver() {
 	std::unique_lock<std::mutex> read_lock(req_mutex, std::defer_lock),
 			write_lock(resp_mutex, std::defer_lock);
-	auto it = reqs.begin();
 	constexpr addrinfo hint { 0, AF_INET, SOCK_STREAM, 0, 0, 0, 0, nullptr };
 	addrinfo * addr;
 	long long ll = 1;
 	for (;;) {
-		read_lock.lock();
-		if (reqs.empty()) {
-			task_sleeper.wait(read_lock);
-		}
-		if (it == reqs.end()) {
-			it = reqs.begin();
-		}
-		read_lock.unlock();
+		request req = get_request();
 
-		int id = it->id;
+		int id = req.id;
 
-		int result = getaddrinfo(it->host.c_str(), it->port.c_str(), &hint,
+		int result = getaddrinfo(req.host.c_str(), req.port.c_str(), &hint,
 				&addr);
 		switch (result) {
 		case 0:
 			break;
 		case EAI_AGAIN:
+			return_request_to_queue(req);
 			continue;
 		case EAI_NONAME:
 		case EAI_FAIL:
 		case EAI_SERVICE:
-			util::log() << "Unable to resolve " << it->host << ":" << it->port
+			util::log() << "Unable to resolve " << req.host << ":" << req.port
 					<< " . " << gai_strerror(result);
 			break;
 		default:
 			util::log() << "Unknown DNS error : " << gai_strerror(result) << " "
-					<< strerror(errno) << " on " << it->host << ":" << it->port;
+					<< strerror(errno) << " on " << req.host << ":" << req.port;
 			exit(0);
 		}
 
-		util::log() << "Resolved domain " << it->host;
+		util::log() << "Resolved domain " << req.host;
 
 		int sock = -1;
-
-		read_lock.lock();
-		it = reqs.erase(it);
-		read_lock.unlock();
 
 		if (result == 0) {
 			for (addrinfo * cr = addr; cr != nullptr; cr = cr->ai_next) {
