@@ -67,14 +67,12 @@ void add_fd(int fd, int epoll_mode) {
 			fds.erase(it);
 		} else {
 			auto log = util::log();
-			log << "Descriptor " << std::to_string(fd)
-					<< " already added to dispatch" << util::newl;
-			log << "It can" << (it->second.recycle_marked ? "   " : "not")
-					<< "be recycled and has "
-					<< std::to_string(it->second.threads.size()) << " triggers";
-			throw new std::logic_error(
-					"Descriptor " + std::to_string(fd)
-							+ " already added to dispatch");
+			std::string err_str =
+					std::string("Descriptor ") + std::to_string(fd)+  " already added to dispatch\n";
+			err_str += std::string("It can") + (it->second.recycle_marked ? "   " : "not") + "be recycled and has "
+					+ std::to_string(it->second.threads.size()) + " triggers";
+			std::logic_error err(err_str);
+			throw err;
 		}
 	}
 	fds.insert( { fd, fd_hold(fd) });
