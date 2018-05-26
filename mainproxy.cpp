@@ -79,18 +79,14 @@ private:
 	void process_request_headers_2(header_parser hp) {
 		int ssock = fut.get();
 		if (ssock == -1) {
-			util::log() << "Cannot connect to server " << hp.headers()["Host"];
-			dispatch::arm_manual(event_vec[1]);
+			util::log() << "Could not connect to server " << hp.headers()["Host"];
+			fail_connecting_to_server();
 			return;
 		}
 		server_sock = dispatch::fd_ref(ssock,
 		EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET);
 		util::log() << hp.request() << " " << client_sock << " -> "
 				<< server_sock;
-		if (server_sock.fd() == -1) {
-			fail_connecting_to_server();
-			return;
-		}
 		util::name_fd(server_sock.fd(), hp.headers()["Host"]);
 //		log << "Connected to server " << host << ":" << port << " at socket "
 //				<< server_sock << "\n";
@@ -220,7 +216,7 @@ private:
 		} else {
 			hp.request() = "HTTP/1.1 504 Gateway Timeout";
 		}
-		util::log() << "failed connection to server " << server_sock
+		util::log() << "Failed connection to server " << server_sock
 				<< " with client fd " << client_sock;
 
 		std::string message = hp.assemble_head();
