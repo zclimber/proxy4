@@ -27,7 +27,7 @@ void relay::loop_once() {
 			clr_errno = errno;
 			errno = 0;
 
-			clw = send(out_fd.fd(), buf.c_str(), buf.size(), MSG_DONTWAIT);
+			clw = send(out_fd.fd(), buf.c_str(), buf.size(), MSG_DONTWAIT | MSG_NOSIGNAL);
 
 			if (clw > 0) {
 				buf.erase(buf.begin(), buf.begin() + clw);
@@ -53,7 +53,7 @@ void relay::loop_once() {
 		case WRITE_REST:
 			clw = 0;
 			if (buf.size()) {
-				clw = send(out_fd.fd(), buf.c_str(), buf.size(), MSG_DONTWAIT);
+				clw = send(out_fd.fd(), buf.c_str(), buf.size(), MSG_DONTWAIT | MSG_NOSIGNAL);
 				clw_errno = errno;
 				errno = 0;
 			}
