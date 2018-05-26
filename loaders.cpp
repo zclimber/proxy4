@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <functional>
 #include <utility>
+#include <cstring>
 
 #include "util.h"
 
@@ -202,7 +203,9 @@ void async_load::upload(std::string& buf, dispatch::fd_ref& sock,
 						log << "WAIT";
 						return;
 					} else {
-						log << "FAIL";
+						log << "FAIL (";
+						log << strerror(errno) << ") ";
+						log << errno;
 						finish(sock, fail_action, log);
 						return;
 					}

@@ -80,7 +80,7 @@ private:
 		int ssock = fut.get();
 		if (ssock == -1) {
 			util::log() << "Could not connect to server " << hp.headers()["Host"];
-			fail_connecting_to_server();
+			dispatch::arm_manual(event_vec[1]);
 			return;
 		}
 		server_sock = dispatch::fd_ref(ssock,
@@ -219,7 +219,7 @@ private:
 		util::log() << "Failed connection to server " << server_sock
 				<< " with client fd " << client_sock;
 
-		std::string message = hp.assemble_head();
+		buf = hp.assemble_head();
 
 		auto thisptr = shared_from_this();
 		auto fin = [thisptr]() -> void {
@@ -228,7 +228,7 @@ private:
 		event_vec.emplace_back( // @suppress("Ambiguous problem")
 				fin);
 
-		async_load::upload(message, client_sock, event_vec.back(),
+		async_load::upload(buf, client_sock, event_vec.back(),
 				event_vec.back());
 	}
 	void cleanup() {
