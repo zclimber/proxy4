@@ -66,7 +66,7 @@ private:
 			port = host.substr(colon + 1, host.length());
 			host = host.substr(0, colon);
 		}
-		std::ofstream os(std::string("log/") + "->" + host
+		std::ofstream os(std::string("log/") + "->" + host + ":" + port
 				, std::ios::out | std::ios::binary | std::ios::ate);
 		os << "\nNEW CONNECTION\n";
 		os << buf;
