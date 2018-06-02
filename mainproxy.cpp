@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "dispatch.h"
-#include "dns_dispatched.h"
+#include "dns.h"
 #include "http.h"
 #include "loaders.h"
 #include "relay.h"
@@ -28,12 +28,13 @@ class proxy_connection: public std::enable_shared_from_this<proxy_connection> {
 	std::vector<dispatch::event_ref> event_vec;
 	std::future<int> fut;
 	int relaycount = 0;
+	const dns_pool & dns;
 	// 0 - fail_client
 	// 1 - fail_server
 public:
-	proxy_connection(int client_sock) :
+	proxy_connection(int client_sock, const dns_pool & p) :
 			client_sock(client_sock,
-			EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET) {
+			EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET), dns(p) {
 	}
 	void start() {
 		load_request_headers();
@@ -66,8 +67,8 @@ private:
 			port = host.substr(colon + 1, host.length());
 			host = host.substr(0, colon);
 		}
-		std::ofstream os(std::string("log/") + "->" + host + ":" + port
-				, std::ios::out | std::ios::binary | std::ios::ate);
+		std::ofstream os(std::string("log/") + "->" + host + ":" + port,
+				std::ios::out | std::ios::binary | std::ios::ate);
 		os << "\nNEW CONNECTION\n";
 		os << buf;
 		os.flush();
@@ -79,12 +80,13 @@ private:
 				std::bind(&proxy_connection::process_request_headers_2,
 						shared_from_this(), hp));
 
-		fut = connect_to_remote_server(host, port, event_vec.back());
+		fut = dns.connect_to_remote_server(host, port, event_vec.back());
 	}
 	void process_request_headers_2(header_parser hp) {
 		int ssock = fut.get();
 		if (ssock == -1) {
-			util::log() << "Could not connect to server " << hp.headers()["Host"];
+			util::log() << "Could not connect to server "
+					<< hp.headers()["Host"];
 			dispatch::arm_manual(event_vec[1]);
 			return;
 		}
@@ -307,9 +309,11 @@ int main(int argc, char** argv) {
 		exit(0);
 	}
 
+	dns_pool dns(dns_threads);
+
 	dispatch::fd_ref acceptor(accept_fd, EPOLLIN);
 
-	dispatch::event_ref accept_ev([accept_fd] {
+	dispatch::event_ref accept_ev([accept_fd, &dns] {
 		struct sockaddr_in cli_addr;
 		socklen_t cli_size = sizeof(cli_addr);
 		int new_client = accept(accept_fd, (sockaddr *) &cli_addr, &cli_size);
@@ -318,29 +322,19 @@ int main(int argc, char** argv) {
 			return;
 		}
 		util::log() << "Accepted client " << new_client;
-		auto prox = std::make_shared<proxy_connection>(new_client);
+		auto prox = std::make_shared<proxy_connection>(new_client, dns);
 		prox->start();
 	});
 
 	dispatch::link(acceptor, EPOLLIN, accept_ev);
 
-	std::vector<std::thread> dns_threads_list(dns_threads);
-
-	for (int i = 0; i < dns_threads; i++) {
-		dns_threads_list[i] = init_dispatched_dns();
-	}
-
 	util::log() << "Started proxy server on port " << port;
 
 	dispatch::run_dispatcher_in_current_thread();
 
-	util::log() << "Closed dispatcher. Start closing resolver threads";
+	util::log() << "Closed dispatcher. Stopping DNS pool";
 
-	stop_dns_resolvers();
-
-	for(auto && thread : dns_threads_list){
-		thread.join();
-	}
+	dns.stop_pool();
 
 	util::log() << "All done. Have a good day!";
 }

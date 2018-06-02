@@ -86,7 +86,6 @@ relay & relay::set_finisher(std::function<void()> on_finish) {
 }
 
 relay::~relay() {
-	assert(st == FINISHED);
 }
 
 relay::relay(dispatch::fd_ref & in_fd, dispatch::fd_ref & out_fd) :

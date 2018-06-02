@@ -10,21 +10,20 @@
 
 #include <string>
 #include <vector>
+#include <memory>
+#include <future>
 
-struct dns_response{
-	int identifier;
-	int result;
+#include "dispatch.h"
+
+struct dns_data;
+
+class dns_pool {
+	std::shared_ptr<dns_data> data;
+public:
+	dns_pool(int thread_count);
+	std::future<int> connect_to_remote_server(const std::string& host,
+				const std::string& port, const dispatch::event_ref & event) const;
+	void stop_pool();
 };
-
-int enqueue_request(const std::string & host, const std::string & port, int timeout);
-
-int get_dns_eventfd();
-
-std::vector<dns_response> get_ready_requests();
-
-void start_dns_resolver();
-
-void stop_dns_resolvers();
-
 
 #endif /* DNS_H_ */

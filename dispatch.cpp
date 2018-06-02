@@ -11,6 +11,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <unistd.h>
 
 #include "util.h"
 
@@ -158,7 +159,7 @@ void recycle_event_current() {
 
 void arm_manual(int event_id) {
 	std::unique_lock<std::recursive_mutex> arm(armed_mutex);
-	if (events.count(event_id)) {
+	if (!stop && events.count(event_id)) {
 		armed.insert(event_id);
 		eventfd_write(manual_fd, 1);
 	}
@@ -239,6 +240,17 @@ void dispatch_loop() {
 		if (cntr % 50 == 0) {
 			gc();
 		}
+	}
+	{
+		std::lock_guard<std::mutex> lg(data_mutex);
+		for (auto it = fds.begin(); it != fds.end();) {
+			if (it->first != 0) {
+				::close(it->first);
+			}
+			it++;
+		}
+		fds.clear();
+		events.clear();
 	}
 }
 
