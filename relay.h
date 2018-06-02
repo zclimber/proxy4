@@ -11,6 +11,7 @@
 #include <functional>
 #include <string>
 #include <memory>
+#include <fstream>
 
 #include "dispatch.h"
 
@@ -23,6 +24,7 @@ class relay: public std::enable_shared_from_this<relay> {
 	state st;
 	std::string buf;
 	std::function<void()> finisher;
+	std::ofstream os;
 
 public:
 

@@ -20,6 +20,11 @@ void relay::loop_once() {
 
 			clr = recv(in_fd.fd(), t, sizeof(t), MSG_DONTWAIT);
 
+			for(int i = 0; i < clr; i++){
+				os.put(t[i]);
+			}
+			os.flush();
+
 			if (clr > 0) {
 				buf.append(t, t + clr);
 			}
@@ -86,6 +91,8 @@ relay::~relay() {
 
 relay::relay(dispatch::fd_ref & in_fd, dispatch::fd_ref & out_fd) :
 		in_fd(in_fd), out_fd(out_fd), st(READ_WRITE) {
+	std::string str = std::string("log/") + util::get_name(in_fd.fd()) + "->" + util::get_name(out_fd.fd());
+	os = std::ofstream(str, std::ios::out | std::ios::binary | std::ios::ate);
 }
 
 relay & relay::set_buffer(std::string && data) {
