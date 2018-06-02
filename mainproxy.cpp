@@ -335,4 +335,12 @@ int main(int argc, char** argv) {
 	dispatch::run_dispatcher_in_current_thread();
 
 	util::log() << "Closed dispatcher. Start closing resolver threads";
+
+	stop_dns_resolvers();
+
+	for(auto && thread : dns_threads_list){
+		thread.join();
+	}
+
+	util::log() << "All done. Have a good day!";
 }

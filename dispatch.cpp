@@ -291,7 +291,7 @@ util::logger& operator <<(util::logger& log, const fd_ref& ref) {
 }
 
 void create_dispatcher_thread() {
-	throw std::exception("Dispatch in threads is not yet implemented");
+	throw std::logic_error("Dispatch in threads is not yet implemented");
 }
 
 event_ref::event_ref() :

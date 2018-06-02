@@ -11,4 +11,6 @@ std::future<int> connect_to_remote_server(const std::string& host,
 
 std::thread init_dispatched_dns();
 
+void stop_dns_resolvers();
+
 #endif /* DNS_DISPATCHED_H_ */

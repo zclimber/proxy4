@@ -24,5 +24,7 @@ std::vector<dns_response> get_ready_requests();
 
 void start_dns_resolver();
 
+void stop_dns_resolvers();
+
 
 #endif /* DNS_H_ */

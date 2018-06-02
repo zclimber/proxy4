@@ -28,6 +28,7 @@ static std::vector<dns_response> ready;
 static int event_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
 static std::mutex req_mutex, resp_mutex;
 static std::condition_variable task_sleeper;
+static std::atomic_flag work;
 
 int enqueue_request(const std::string& host, const std::string& port,
 		int timeout) {
@@ -52,6 +53,10 @@ std::vector<dns_response> get_ready_requests() {
 request get_request() {
 	std::unique_lock<std::mutex> read_lock(req_mutex);
 	while (reqs.empty()) {
+		if(!work.test_and_set(std::memory_order_relaxed)){
+			work.clear(std::memory_order_relaxed);
+			return request();
+		}
 		task_sleeper.wait(read_lock);
 	}
 	request rq = reqs.front();
@@ -71,8 +76,14 @@ void start_dns_resolver() {
 	constexpr addrinfo hint { 0, AF_INET, SOCK_STREAM, 0, 0, 0, 0, nullptr };
 	addrinfo * addr;
 	long long ll = 1;
+	work.test_and_set(std::memory_order_relaxed);
 	for (;;) {
 		request req = get_request();
+
+		if(!work.test_and_set(std::memory_order_relaxed)){
+			work.clear(std::memory_order_relaxed);
+			return;
+		}
 
 		int id = req.id;
 
@@ -120,4 +131,9 @@ void start_dns_resolver() {
 		write_lock.unlock();
 		write(event_fd, &ll, sizeof(ll));
 	}
+}
+
+void stop_dns_resolvers() {
+	work.clear(std::memory_order_relaxed);
+	task_sleeper.notify_all();
 }
