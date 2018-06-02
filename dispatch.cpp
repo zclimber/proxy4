@@ -45,6 +45,7 @@ static int epoll_fd = epoll_create1(0);
 static int manual_fd = eventfd(0, EFD_CLOEXEC);
 static int event_id_counter = 1;
 static int current_action = 0;
+static bool stop = false;
 static std::mutex data_mutex;
 static std::recursive_mutex armed_mutex;
 
@@ -67,9 +68,11 @@ void add_fd(int fd, int epoll_mode) {
 			fds.erase(it);
 		} else {
 			auto log = util::log();
-			std::string err_str =
-					std::string("Descriptor ") + std::to_string(fd)+  " already added to dispatch\n";
-			err_str += std::string("It can") + (it->second.recycle_marked ? "   " : "not") + "be recycled and has "
+			std::string err_str = std::string("Descriptor ")
+					+ std::to_string(fd) + " already added to dispatch\n";
+			err_str += std::string("It can")
+					+ (it->second.recycle_marked ? "   " : "not")
+					+ "be recycled and has "
 					+ std::to_string(it->second.threads.size()) + " triggers";
 			throw std::logic_error(err_str);
 		}
@@ -230,10 +233,10 @@ void dispatch_loop() {
 		eventfd_read(manual_fd, &l);
 	});
 	link(manual_fd, EPOLLIN, read_manual);
-	for (int cntr = 1;; cntr++) {
+	for (int cntr = 1; !stop; cntr++) {
 		epoll_mark();
 		run_events();
-		if (cntr % 10 == 0) {
+		if (cntr % 50 == 0) {
 			gc();
 		}
 	}
@@ -242,9 +245,11 @@ void dispatch_loop() {
 namespace dispatch {
 
 void run_dispatcher_in_current_thread() {
-	if (!dispatcher.joinable()) {
-		dispatch_loop();
-	}
+	fd_ref stdinfd(0, EPOLLIN);
+	event_ref over([] {stop = true;});
+	link(stdinfd, EPOLLIN, over);
+	stop = false;
+	dispatch_loop();
 }
 
 void link(const fd_ref& fd, int epoll_target, const event_ref& ev) {
@@ -286,7 +291,7 @@ util::logger& operator <<(util::logger& log, const fd_ref& ref) {
 }
 
 void create_dispatcher_thread() {
-	dispatcher = std::thread(dispatch_loop);
+	throw std::exception("Dispatch in threads is not yet implemented");
 }
 
 event_ref::event_ref() :

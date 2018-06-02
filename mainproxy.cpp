@@ -333,4 +333,6 @@ int main(int argc, char** argv) {
 	util::log() << "Started proxy server on port " << port;
 
 	dispatch::run_dispatcher_in_current_thread();
+
+	util::log() << "Closed dispatcher. Start closing resolver threads";
 }
