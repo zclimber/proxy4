@@ -66,8 +66,11 @@ private:
 			port = host.substr(colon + 1, host.length());
 			host = host.substr(0, colon);
 		}
-		std::ofstream os(std::string("log/")+ util::get_name(client_sock.fd()) + "->" + host);
+		std::ofstream os(std::string("log/") + "->" + host
+				, std::ios::out | std::ios::binary | std::ios::ate);
+		os << "\nNEW CONNECTION\n";
 		os << buf;
+		os.flush();
 //		log << "Connecting to server " << host << ":" << port << "\n";
 
 		event_vec.push_back(dispatch::event_ref());

@@ -91,8 +91,14 @@ relay::~relay() {
 
 relay::relay(dispatch::fd_ref & in_fd, dispatch::fd_ref & out_fd) :
 		in_fd(in_fd), out_fd(out_fd), st(READ_WRITE) {
-	std::string str = std::string("log/") + util::get_name(in_fd.fd()) + "->" + util::get_name(out_fd.fd());
+	std::string str;
+	if(util::get_name(in_fd.fd()).substr(0, 6) == "client"){
+		str = std::string("log/") + "->" + util::get_name(out_fd.fd());
+	} else {
+		str = std::string("log/") + "<-" + util::get_name(in_fd.fd());
+	}
 	os = std::ofstream(str, std::ios::out | std::ios::binary | std::ios::ate);
+	os << "\nNEW RELAY\n";
 }
 
 relay & relay::set_buffer(std::string && data) {
