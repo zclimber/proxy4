@@ -33,7 +33,7 @@ int enqueue_request(const std::string& host, const std::string& port,
 		int timeout) {
 	request new_req { host, port, ids++, timeout };
 	std::lock_guard<std::mutex> lg(req_mutex);
-	reqs.push_back(new_req);
+	reqs.push_front(new_req);
 	task_sleeper.notify_one();
 	return new_req.id;
 }
@@ -62,6 +62,7 @@ request get_request() {
 void return_request_to_queue(request req) {
 	std::lock_guard<std::mutex> lg(req_mutex);
 	reqs.push_back(req);
+	task_sleeper.notify_one();
 }
 
 void start_dns_resolver() {
