@@ -12,6 +12,7 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
+#include <signal.h>
 
 #include "dispatch.h"
 #include "dns.h"
@@ -308,6 +309,11 @@ int main(int argc, char** argv) {
 		printf("Unable to listen on port %d", port);
 		exit(0);
 	}
+
+	sigset_t sigmask;
+	sigemptyset(&sigmask);
+	sigaddset(&sigmask, SIGINT);
+	pthread_sigmask(SIG_BLOCK, &sigmask, nullptr);
 
 	dns_pool dns(dns_threads);
 

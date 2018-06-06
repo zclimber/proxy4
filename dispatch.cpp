@@ -12,6 +12,9 @@
 #include <utility>
 #include <vector>
 #include <unistd.h>
+#include <sys/signalfd.h>
+#include <signal.h>
+#include <cstring>
 
 #include "util.h"
 
@@ -257,11 +260,24 @@ void dispatch_loop() {
 namespace dispatch {
 
 void run_dispatcher_in_current_thread() {
-	fd_ref stdinfd(0, EPOLLIN);
-	event_ref over([] {stop = true;});
+
+	sigset_t sigmask, sigold;
+	sigemptyset(&sigmask);
+	sigaddset(&sigmask, SIGINT);
+	sigprocmask(SIG_BLOCK, &sigmask, &sigold);
+
+	int sfd = signalfd(-1, &sigmask, SFD_CLOEXEC);
+	fd_ref stdinfd(sfd, EPOLLIN);
+	event_ref over([sfd] {
+		signalfd_siginfo sig;
+		read(sfd, &sig, sizeof(sig));
+		stop = true;
+	});
 	link(stdinfd, EPOLLIN, over);
 	stop = false;
 	dispatch_loop();
+
+	sigprocmask(SIG_SETMASK, &sigold, nullptr);
 }
 
 void link(const fd_ref& fd, int epoll_target, const event_ref& ev) {
