@@ -50,11 +50,11 @@ static int manual_fd = eventfd(0, EFD_CLOEXEC);
 static int event_id_counter = 1;
 static int current_action = 0;
 static bool stop = false;
-static std::mutex data_mutex;
+static std::recursive_mutex data_mutex;
 static std::recursive_mutex armed_mutex;
 
 int add_event(std::function<void()> action) {
-	std::lock_guard<std::mutex> lg(data_mutex);
+	std::lock_guard<std::recursive_mutex> lg(data_mutex);
 	int current_number = event_id_counter++;
 	events.insert( { current_number, event(action) });
 	return current_number;
@@ -64,7 +64,7 @@ void add_fd(int fd, int epoll_mode) {
 	if (fd == -1) {
 		return;
 	}
-	std::lock_guard<std::mutex> lg(data_mutex);
+	std::lock_guard<std::recursive_mutex> lg(data_mutex);
 	auto it = fds.find(fd);
 	if (it != fds.end()) {
 		if (it->second.recycle_marked && it->second.threads.size() == 0) {
@@ -91,7 +91,7 @@ void add_fd(int fd, int epoll_mode) {
 }
 
 void link(int fd, int epoll_target, int event_id) {
-	std::lock_guard<std::mutex> lg(data_mutex);
+	std::lock_guard<std::recursive_mutex> lg(data_mutex);
 	auto fdd = fds.find(fd);
 	auto evd = events.find(event_id);
 	link_holer l { event_id, epoll_target };
@@ -108,7 +108,7 @@ void link(int fd, int epoll_target, int event_id) {
 }
 
 void unlink(int fd, int event_id) {
-	std::lock_guard<std::mutex> lg(data_mutex);
+	std::lock_guard<std::recursive_mutex> lg(data_mutex);
 	auto fdd = fds.find(fd);
 	auto evd = events.find(event_id);
 	if (fdd == fds.end()) {
@@ -136,7 +136,7 @@ void unlink_current(int fd) {
 }
 
 void recycle_event(int event_id) {
-	std::lock_guard<std::mutex> lg(data_mutex);
+	std::lock_guard<std::recursive_mutex> lg(data_mutex);
 	auto evd = events.find(event_id);
 	if (evd != events.end()) {
 		evd->second.recycle_marked = true;
@@ -144,12 +144,14 @@ void recycle_event(int event_id) {
 }
 
 void recycle_fd(int fd) {
-	std::lock_guard<std::mutex> lg(data_mutex);
+	std::lock_guard<std::recursive_mutex> lg(data_mutex);
 	auto fdd = fds.find(fd);
 	if (fdd != fds.end()) {
 		fdd->second.recycle_marked = true;
 		for (auto x : fdd->second.threads) {
-			events.find(x.event_id)->second.trigger_count--;
+			if (events.count(x.event_id)) { // only not happens during destruction
+				events.find(x.event_id)->second.trigger_count--;
+			}
 		}
 	}
 }
@@ -174,7 +176,7 @@ void epoll_mark() {
 	epoll_event poll[1000];
 	int ev = epoll_wait(epoll_fd, poll, 1000, -1);
 	std::unique_lock<std::recursive_mutex> arm(armed_mutex);
-	std::lock_guard<std::mutex> lg(data_mutex);
+	std::lock_guard<std::recursive_mutex> lg(data_mutex);
 	for (int i = 0; i < ev; i++) {
 		auto fdd = fds.find(poll[i].data.fd);
 		for (auto x : fdd->second.threads) {
@@ -199,7 +201,7 @@ void run_events() {
 }
 
 void gc() {
-	std::lock_guard<std::mutex> lg(data_mutex);
+	std::lock_guard<std::recursive_mutex> lg(data_mutex);
 	int ev_start = events.size(), fd_start = fds.size();
 	int ev_hastriggers = 0, ev_notrecycled = 0;
 	for (auto it = events.begin(); it != events.end();) {
@@ -243,17 +245,6 @@ void dispatch_loop() {
 		if (cntr % 50 == 0) {
 			gc();
 		}
-	}
-	{
-		std::lock_guard<std::mutex> lg(data_mutex);
-		for (auto it = fds.begin(); it != fds.end();) {
-			if (it->first != 0) {
-				::close(it->first);
-			}
-			it++;
-		}
-		fds.clear();
-		events.clear();
 	}
 }
 
@@ -393,6 +384,21 @@ fd_ref& dispatch::fd_ref::operator =(fd_ref&& oth) {
 
 fd_ref::~fd_ref() {
 	recycle();
+}
+
+void cleanup() {
+	std::lock_guard<std::recursive_mutex> lg(data_mutex);
+	for (auto it = events.begin(); it != events.end();) {
+		it = events.erase(it);
+	}
+//		events.clear();
+	for (auto it = fds.begin(); it != fds.end();) {
+		if (it->first != 0) {
+			::close(it->first);
+		}
+		it++;
+	}
+	fds.clear();
 }
 
 }

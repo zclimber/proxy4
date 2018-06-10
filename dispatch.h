@@ -70,6 +70,7 @@ void arm_manual(const event_ref &);
 
 void run_dispatcher_in_current_thread();
 void create_dispatcher_thread();
+void cleanup();
 
 }
 
