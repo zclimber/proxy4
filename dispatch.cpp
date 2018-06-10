@@ -262,7 +262,7 @@ void run_dispatcher_in_current_thread() {
 	event_ref over([sfd] {
 		signalfd_siginfo sig;
 		read(sfd, &sig, sizeof(sig));
-		stop = true;
+		stop = sig.ssi_signo == SIGINT;
 	});
 	link(stdinfd, EPOLLIN, over);
 	stop = false;

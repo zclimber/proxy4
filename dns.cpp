@@ -77,12 +77,10 @@ struct dns_data {
 		addrinfo * addr;
 		for (;;) {
 			bool success = get_request(req);
-			if (!work.test_and_set(std::memory_order_relaxed)) {
+			if (!work.test_and_set(std::memory_order_relaxed) || !success) {
 				work.clear(std::memory_order_relaxed);
 				return;
 			}
-
-			int id = req.id;
 
 			int result = getaddrinfo(req.host.c_str(), req.port.c_str(), &hint,
 					&addr);
