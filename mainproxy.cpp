@@ -338,9 +338,13 @@ int main(int argc, char** argv) {
 
 	dispatch::run_dispatcher_in_current_thread();
 
-	util::log() << "Closed dispatcher. Stopping DNS pool";
+	util::log() << "Stopped dispatcher. Stopping DNS pool";
 
-	dns.stop_pool();
+	dns.stop_wait();
+
+	util::log() << "Stopped DNS pool. Closing stray sockets";
+
+	dispatch::cleanup();
 
 	util::log() << "All done. Have a good day!";
 }
