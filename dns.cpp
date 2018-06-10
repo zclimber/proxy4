@@ -72,7 +72,8 @@ struct dns_data {
 		std::unique_lock<std::mutex> read_lock(req_mutex, std::defer_lock);
 		constexpr addrinfo hint { 0, AF_INET, SOCK_STREAM, 0, 0, 0, 0, nullptr };
 		const dispatch::event_ref dummy;
-		request req {"", "", 0, std::ref(dummy), std::shared_ptr<std::promise<int>>()};
+		request req { "", "", 0, std::ref(dummy), std::shared_ptr<
+				std::promise<int>>() };
 		addrinfo * addr;
 		for (;;) {
 			bool success = get_request(req);
@@ -131,11 +132,16 @@ struct dns_data {
 		work.clear(std::memory_order_relaxed);
 		task_sleeper.notify_all();
 	}
-	~dns_data() {
+	void stop_wait() {
 		stop_pool();
 		for (auto && t : threads) {
-			t.join();
+			if(t.joinable()){
+				t.join();
+			}
 		}
+	}
+	~dns_data() {
+		stop_wait();
 	}
 };
 
@@ -150,4 +156,8 @@ std::future<int> dns_pool::connect_to_remote_server(const std::string& host,
 
 void dns_pool::stop_pool() {
 	data->stop_pool();
+}
+
+void dns_pool::stop_wait() {
+	data->stop_wait();
 }

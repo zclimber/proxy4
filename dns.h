@@ -24,6 +24,7 @@ public:
 	std::future<int> connect_to_remote_server(const std::string& host,
 				const std::string& port, const dispatch::event_ref & event) const;
 	void stop_pool();
+	void stop_wait();
 };
 
 #endif /* DNS_H_ */
